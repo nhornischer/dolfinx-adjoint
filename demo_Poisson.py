@@ -25,10 +25,14 @@ import scipy.sparse as sps
 
 from mpi4py import MPI
 from dolfinx import mesh, fem, io, nls
-
+from dolfinx_adjoint.fem.assemble import assemble_scalar
+from dolfinx_adjoint.fem.petsc import NonlinearProblem
+from dolfinx_adjoint.fem.function import Function
+from dolfinx_adjoint.fem.forms import form
+from dolfinx_adjoint.fem.bcs import dirichletbc
+from dolfinx_adjoint.nls.petsc import NewtonSolver
 from petsc4py.PETSc import ScalarType
-
-import ufl
+import ufl 
 
 # Define mesh and finite element space
 domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, mesh.CellType.triangle)
@@ -39,39 +43,48 @@ W = fem.FunctionSpace(domain, ("DG", 0))
 domain.topology.create_connectivity(domain.topology.dim -1, domain.topology.dim)
 boundary_facets = mesh.exterior_facet_indices(domain.topology)
 
-uD = fem.Function(V)
-uD.interpolate(lambda x: 0.0 * x[0])
-
+uD = Function(V, name="u_D")
+uD.interpolate(lambda x: 0.0 * x[0])            # Should possibly be overloaded
 boundary_dofs = fem.locate_dofs_topological(V, domain.topology.dim - 1, boundary_facets)
-bc = fem.dirichletbc(uD, boundary_dofs)
+bc = dirichletbc(uD, boundary_dofs)         # Should possibly be overloaded
 
 # Define the basis functions and parameters
-uh = fem.Function(V, name="uₕ")
+uh = Function(V, name="uₕ")
+
 v = ufl.TestFunction(V)
-f = fem.Function(W, name="f")
-nu = fem.Constant(domain, ScalarType(1.0))
-f.interpolate(lambda x: x[0] + x[1])
+f = Function(W, name="f")
+nu = fem.Constant(domain, ScalarType(1.0))      # Should possibly be overloaded
+f.interpolate(lambda x: x[0] + x[1])            # Should possibly be overloaded
 
 # Define the variational form and the residual equation
 a = nu * ufl.inner(ufl.grad(uh), ufl.grad(v)) * ufl.dx
 L = f * v * ufl.dx
-
 F = a - L
 
 # Define the problem solver
-problem = fem.petsc.NonlinearProblem(F, uh, bcs=[bc])
-solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)
+problem = NonlinearProblem(F, uh, bcs=[bc])           # Should possibly be overloaded
+solver = NewtonSolver(MPI.COMM_WORLD, problem)        # Should possibly be overloaded
 
 # Solve the problem
-solver.solve(uh)
+solver.solve(uh)        # Should possibly be overloaded
 
 # Define profile g
-g = fem.Function(W)
-g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))
+g = Function(W, name="g")
+g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))   # Should possibly be overloaded but is a member of Function
 
 # Define the objective function
-J = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx
-print("J(u) = ", fem.assemble_scalar(fem.form(J)))
+J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx 
+J = assemble_scalar(form(J_form))         # Should possibly be overloaded
+print("J(u) = ", J)
+
+
+print("\n-----------Adjoint approach-----------\n")
+from dolfinx_adjoint.graph import visualise
+from dolfinx_adjoint.dolfinx_adjoint import compute_gradient
+
+# Test if it can compute the gradient of J with respect to uh
+print(compute_gradient(J, f))
+visualise()
 
 """
 We now turn to the adjoint approach to calculating the gradient of J(u) with respect to f.
@@ -102,7 +115,7 @@ def gradient():
     shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
     dFduSparse = sps.csr_matrix((dFdu.data, dFdu.indices, dFdu.indptr), shape=shape).transpose()
 
-    dJdu = - fem.assemble_vector(fem.form(ufl.derivative(J, uh))).array.transpose()
+    dJdu = - fem.assemble_vector(fem.form(ufl.derivative(J_form, uh))).array.transpose()
 
     adjoint_solution = sps.linalg.spsolve(dFduSparse, dJdu)
 
@@ -115,6 +128,10 @@ def gradient():
     return dJ
 
 dJ = gradient()
+
+print(dJ.vector.array[:])
+
+exit()
 
 with io.XDMFFile(domain.comm, "demo_Poisson.xdmf", "w") as xdmf:
     xdmf.write_mesh(domain)
@@ -132,14 +149,14 @@ However, with the gradient we obtain quadratic convergence
 # Define the perturbation
 delta = fem.Function(W, name="δf")
 delta.interpolate(lambda x: x[0] * x[1])
-J_value = fem.assemble_scalar(fem.form(J))
+J_value = fem.assemble_scalar(fem.form(J_form))
 
 values_linear = []
 values_quadratic = []
 for epsilon in np.linspace(1, 0, 10):
     f.interpolate(lambda x: x[0] + x[1] + epsilon * (x[0] * x[1]))
     solver.solve(uh)
-    J_eps = fem.assemble_scalar(fem.form(J))
+    J_eps = fem.assemble_scalar(fem.form(J_form))
     dJ = gradient()
 
     values_linear.append(np.abs(J_eps - J_value))
