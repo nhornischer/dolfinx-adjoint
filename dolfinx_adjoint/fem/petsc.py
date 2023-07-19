@@ -7,13 +7,21 @@ import dolfinx_adjoint.graph as graph
 class NonlinearProblem(fem.petsc.NonlinearProblem):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _graph = graph.get_graph()
-        _graph.add_node(id(self), name="NonlinearProblem")
+        graph.add_node(id(self), name="NonlinearProblem")
         ufl_form = args[0]
         uh = args[1]
-        bcs = kwargs["bcs"]
-        _graph.add_node(id(ufl_form), name="residual")
-        _graph.nodes[id(ufl_form)]['form'] = ufl_form
+        graph.add_node(id(ufl_form), name="residual")
+        graph.add_attribute(id(ufl_form),'form', ufl_form)
+
+        graph.add_edge(id(ufl_form), id(self))
+        for component in ufl_form.coefficients():
+            graph.add_edge(id(component), id(ufl_form))
+        try:
+            bcs = kwargs["bcs"]
+            for bc in bcs:
+                graph.add_edge(id(bc), id(self))
+        except: 
+            pass
 
         def adjoint(coefficient, argument = None):
             dFdu = fem.assemble_matrix(fem.form(ufl.derivative(ufl_form, uh)), bcs=bcs)
@@ -27,9 +35,7 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
             adjoint_solution = sps.linalg.spsolve(dFduSparse, -dFdf)
 
             return adjoint_solution.T
-        _graph.nodes[id(ufl_form)]["adjoint"] = adjoint
-
-        graph.add_edge(id(ufl_form), id(self))
-        for component in ufl_form.coefficients():
-            graph.add_edge(id(component), id(ufl_form))
-        graph.add_edge(id(kwargs["bcs"][0]), id(self))
+        
+        _node = graph.Adjoint(ufl_form)
+        _node.set_adjoint_method(adjoint)
+        _node.add_to_graph()

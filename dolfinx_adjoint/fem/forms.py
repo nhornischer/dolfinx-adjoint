@@ -6,15 +6,16 @@ import ufl
 def form(*args, **kwargs):
     output = fem.form(*args, **kwargs)
     ufl_form = args[0]
-    _graph = graph.get_graph()
-    _graph.add_node(id(output), name=ufl_form.__class__.__name__)
-    for component in ufl_form.coefficients():
-        graph.add_edge(id(component), id(output))
+    _node = graph.Adjoint(output)
+    graph.add_node(id(output), name = ufl_form.__class__.__name__)
+
+    graph.add_incoming_edges(id(output), ufl_form.coefficients())
 
     def adjoint(coefficient, argument = None):
-        return fem.assemble_vector(fem.form(ufl.derivative(ufl_form, coefficient, argument))).array[:]
-
-    _graph.nodes[id(output)]["adjoint"] = adjoint
-
+        return fem.assemble_vector(fem.form(\
+            ufl.derivative(ufl_form, coefficient, argument))).array[:]
     
+    _node.set_adjoint_method(adjoint)
+    _node.add_to_graph()
+
     return output

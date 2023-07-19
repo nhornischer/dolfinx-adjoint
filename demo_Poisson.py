@@ -25,66 +25,54 @@ import scipy.sparse as sps
 
 from mpi4py import MPI
 from dolfinx import mesh, fem, io, nls
-from dolfinx_adjoint.fem.assemble import assemble_scalar
-from dolfinx_adjoint.fem.petsc import NonlinearProblem
-from dolfinx_adjoint.fem.function import Function
-from dolfinx_adjoint.fem.forms import form
-from dolfinx_adjoint.fem.bcs import dirichletbc
-from dolfinx_adjoint.nls.petsc import NewtonSolver
+from dolfinx_adjoint import *
 from petsc4py.PETSc import ScalarType
 import ufl 
 
 # Define mesh and finite element space
 domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, mesh.CellType.triangle)
-V = fem.FunctionSpace(domain, ("CG", 1))
+V = fem.FunctionSpace(domain, ("CG", 1))                
 W = fem.FunctionSpace(domain, ("DG", 0))
 
 # Define the boundary and the boundary conditions
 domain.topology.create_connectivity(domain.topology.dim -1, domain.topology.dim)
 boundary_facets = mesh.exterior_facet_indices(domain.topology)
-
-uD = Function(V, name="u_D")
-uD.interpolate(lambda x: 0.0 * x[0])            # Should possibly be overloaded
+uD = fem.Function(V, name="u_D")                            # Overloaded
+uD.interpolate(lambda x: 0.0 * x[0])                    # Should possibly be overloaded
 boundary_dofs = fem.locate_dofs_topological(V, domain.topology.dim - 1, boundary_facets)
-bc = dirichletbc(uD, boundary_dofs)         # Should possibly be overloaded
+bc = fem.dirichletbc(uD, boundary_dofs)                     # Should possibly be overloaded
 
 # Define the basis functions and parameters
-uh = Function(V, name="uₕ")
-
+uh = fem.Function(V, name="uₕ")                             # Overloaded
 v = ufl.TestFunction(V)
-f = Function(W, name="f")
-nu = fem.Constant(domain, ScalarType(1.0))      # Should possibly be overloaded
-f.interpolate(lambda x: x[0] + x[1])            # Should possibly be overloaded
+f = fem.Function(W, name="f")                               # Overloaded
+nu = fem.Constant(domain, ScalarType(1.0))              # Should possibly be overloaded
+f.interpolate(lambda x: x[0] + x[1])                    # Should possibly be overloaded
 
 # Define the variational form and the residual equation
 a = nu * ufl.inner(ufl.grad(uh), ufl.grad(v)) * ufl.dx
 L = f * v * ufl.dx
 F = a - L
 
-# Define the problem solver
-problem = NonlinearProblem(F, uh, bcs=[bc])           # Should possibly be overloaded
-solver = NewtonSolver(MPI.COMM_WORLD, problem)        # Should possibly be overloaded
-
-# Solve the problem
-solver.solve(uh)        # Should possibly be overloaded
+# Define the problem solver and solve it
+problem = fem.petsc.NonlinearProblem(F, uh, bcs=[bc])             # Overloaded
+solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)          # Overloaded
+solver.solve(uh)                                        # Overloaded
 
 # Define profile g
-g = Function(W, name="g")
-g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))   # Should possibly be overloaded but is a member of Function
-
+g = fem.Function(W, name="g")                               # Overloaded
+g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))   
 # Define the objective function
-J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx 
-J = assemble_scalar(form(J_form))         # Should possibly be overloaded
+J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx
+J = fem.assemble_scalar(fem.form(J_form))                       # Overloaded
 print("J(u) = ", J)
 
 
 print("\n-----------Adjoint approach-----------\n")
-from dolfinx_adjoint.graph import visualise
-from dolfinx_adjoint.dolfinx_adjoint import compute_gradient
-
+visualise()
 # Test if it can compute the gradient of J with respect to uh
 print(compute_gradient(J, f))
-visualise()
+
 
 """
 We now turn to the adjoint approach to calculating the gradient of J(u) with respect to f.

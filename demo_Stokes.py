@@ -38,6 +38,7 @@ import gmsh
 
 from mpi4py import MPI
 from dolfinx import mesh, fem, io, nls
+from dolfinx_adjoint import *
 import ufl
 
 # Mesh parameters
@@ -113,7 +114,7 @@ V = fem.FunctionSpace(mesh, v_elem)
 V_u, _ = V.sub(0).collapse()
 V_p, _ = V.sub(1).collapse()
 
-up = fem.Function(V)
+up = fem.Function(V, name="up")
 (u, p) = ufl.split(up)
 u_, p_ = ufl.TrialFunctions(V)
 
@@ -121,11 +122,11 @@ vq = ufl.TestFunction(V)
 (v, q) = ufl.split(vq)
 
 # Boundary conditions   
-f = fem.Function(V_u)             # Inflow Dirichlet boundary condition
+f = fem.Function(V_u, name="f")             # Inflow Dirichlet boundary condition
 f.interpolate(lambda x: np.stack((x[1]*(10-x[1])/25, 0.0* x[0])))
-g = fem.Function(V_u)             # Circle Dirichlet boundary condition
-noslip = fem.Function(V_u)        # No-slip homogenous Dirichlet boundary condition at the walls for the velocity
-outflow = fem.Function(V_p)       # Outflow homogeneous Dirichlet boundary condition for the pressure
+g = fem.Function(V_u, name="g")             # Circle Dirichlet boundary condition
+noslip = fem.Function(V_u, name="noslip")        # No-slip homogenous Dirichlet boundary condition at the walls for the velocity
+outflow = fem.Function(V_p, name="outflow")       # Outflow homogeneous Dirichlet boundary condition for the pressure
 
 dofs_walls = fem.locate_dofs_topological((V.sub(0), V_u), 1, ft.indices[ft.values == wall_marker])
 dofs_inflow = fem.locate_dofs_topological((V.sub(0), V_u), 1, ft.indices[ft.values == inlet_marker])
@@ -151,44 +152,4 @@ J  = 0.5 * ufl.inner(ufl.grad(u), ufl.grad(u)) * ufl.dx + alpha / 2 * ufl.inner(
 
 print("J(u, p) = ", fem.assemble_scalar(fem.form(J)))
 
-""" Calculate the gradient with an adjoint method
-        dJdg = ∂J/∂u * du/dg + ∂J/∂g 
-    where we have no terms of the pressure.
-
-    This results in
-        dJ/dg = - ∂J/∂u * (∂F/∂u)^-1 * ∂F/∂g + ∂J/∂g   
-
-    We thus solve for the adjoint variable λ:
-        ∂Fᵀ/∂u * λ =  - ∂Jᵀ/∂u 
-    and then calculate the gradient as
-        dJ/dg = λᵀ * ∂F/∂g + ∂J/∂g 
-"""
-
-dFdu = fem.assemble_matrix(fem.form(ufl.derivative(F, u, u_)), bcs = bcs)
-dFdu.finalize()
-shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
-dFduSparse = sps.csr_matrix((dFdu.data, dFdu.indices, dFdu.indptr), shape=shape).transpose()
-
-dJdu = - fem.assemble_vector(fem.form(ufl.derivative(J, u, u_))).array.transpose()
-
-adjoint_solution = sps.linalg.spsolve(dFduSparse, dJdu)
-
-dJdg = fem.assemble_vector(fem.form(ufl.derivative(J, g)))
-
-dFdg = fem.assemble_matrix(fem.form(ufl.derivative(F, g)))
-
-
-
-gradient = adjoint_solution.transpose() @ dFdg + dJdg
-
-dJ = fem.Function(V_u, name="dJdg")
-dJ.vector.setArray(gradient)
-
-with io.XDMFFile(mesh.comm, "demo_Stokes.xdmf", "w") as xdmf:
-    u.name = "Velocity"
-    p.name = "Pressure"
-    dJ.name = "Gradient"
-    xdmf.write_mesh(mesh)
-    xdmf.write_function(u, 0.0)
-    xdmf.write_function(p, 0.0)
-    xdmf.write_function(dJ, 0.0)
+visualise()

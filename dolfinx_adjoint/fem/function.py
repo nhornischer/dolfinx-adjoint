@@ -1,10 +1,19 @@
 from dolfinx import fem
+from dolfinx.fem.function import Function
 import dolfinx_adjoint.graph as graph
 
 
 class Function(fem.Function):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _graph = graph.get_graph()
-        _graph.add_node(id(self), name=self.name)
-        _graph.nodes[id(self)]["adjoint"] = lambda args: 1.0
+        graph.add_node(id(self), name=self.name)
+        _node = graph.Adjoint(self)
+        _node.set_adjoint_method(lambda x: 1.0)
+        _node.add_to_graph()
+
+    def copy(self) -> Function:
+        output = super().copy()
+        graph.add_node(id(output), name=self.name + "copy")
+        graph.add_edge(id(self), id(output))
+
+        return output
