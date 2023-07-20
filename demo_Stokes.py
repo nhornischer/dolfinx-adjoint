@@ -148,8 +148,17 @@ solver.solve(up)
 
 # Define the objective function
 dObs = ufl.Measure("ds", domain=mesh, subdomain_data=ft, subdomain_id=obstacle_marker)
-J  = 0.5 * ufl.inner(ufl.grad(u), ufl.grad(u)) * ufl.dx + alpha / 2 * ufl.inner(g, g) * dObs
+J_form  = 0.5 * ufl.inner(ufl.grad(u), ufl.grad(u)) * ufl.dx + alpha / 2 * ufl.inner(g, g) * dObs
 
-print("J(u, p) = ", fem.assemble_scalar(fem.form(J)))
+J = fem.assemble_scalar(fem.form(J_form))
+
+print("J(u, p) = ", J)
 
 visualise()
+compute_gradient(J, u)
+
+import unittest
+
+class TestStokes(unittest.TestCase):
+    def setUp(self):
+        self.dJdu = fem.assemble_vector(fem.form(ufl.derivative(J, u, u_)))

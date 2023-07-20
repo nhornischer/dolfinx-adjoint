@@ -17,3 +17,11 @@ class Function(fem.Function):
         graph.add_edge(id(self), id(output))
 
         return output
+    
+# class Constant(fem.Constant):
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         graph.add_node(id(self), name="Constant")
+#         _node = graph.Adjoint(self)
+#         _node.set_adjoint_method(lambda x: 1.0)
+#         _node.add_to_graph()

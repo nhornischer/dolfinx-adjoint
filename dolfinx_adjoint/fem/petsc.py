@@ -28,7 +28,7 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
             dFdu.finalize()
             V = uh.function_space
             shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
-            dFduSparse = sps.csr_matrix((dFdu.data, dFdu.indices, dFdu.indptr), shape=shape).transpose()
+            dFduSparse = sps.csr_matrix((dFdu.data, dFdu.indices, dFdu.indptr), shape=shape)
             
             dFdf = fem.assemble_matrix(fem.form(ufl.derivative(ufl_form, coefficient))).to_dense()
 

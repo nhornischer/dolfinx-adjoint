@@ -1,16 +1,14 @@
 from dolfinx_adjoint import graph
 import numpy as np
 
+import time
+
 import ctypes
 import networkx as nx
 
 def compute_gradient(J, m):
+    tic = time.perf_counter()
     _graph = graph.get_graph()
-    functional_node = _graph.nodes[id(J)]
-    variable_node = _graph.nodes[id(m)]
-    functional_node["name"] =  functional_node["name"] +"(J)"
-    variable_node["name"] = variable_node["name"] + " (m)"
-
 
     adjoint_path = []
     for path in nx.all_simple_paths(_graph, source=id(m), target=id(J)):
@@ -43,7 +41,10 @@ def compute_gradient(J, m):
 
     graph.visualise(adjoint_graph, filename = "adjoint_graph_transformed.pdf")
 
+    graph_time = time.perf_counter() - tic
+    print(f"Graph time: {graph_time:0.4f} seconds")
 
+    tic = time.perf_counter()
     # Possible to do this in parallel
     for node_id in adjoint_graph.nodes:
         # Get predeccessor
@@ -55,6 +56,10 @@ def compute_gradient(J, m):
                 print(f"Calculating: d{_graph.nodes[node_id]['name']}/d{_graph.nodes[predeccessor]['name']}")
                 adjoint.calculate_adjoint(predeccessor)
 
+    adjoint_time = time.perf_counter() - tic
+    print(f"Adjoint time: {adjoint_time:0.4f} seconds")
+
+    tic = time.perf_counter()
     # Calculate the gradient
     def _calculate_gradient(node_id):
         adjoint = graph.get_attribute(node_id, "adjoint")
@@ -62,13 +67,20 @@ def compute_gradient(J, m):
         if len(predeccessors) == 0:
             return 1.0
         else:
-            deeper = _calculate_gradient(predeccessors[0])
-            current = adjoint.get_adjoint_value(predeccessors[0])
-            if type(current) == float or type(deeper) == float:
-                return current * deeper
-            else:
-                return deeper @ current
+            gradient = 0.0
+            for predeccessor in predeccessors:
+                deeper = _calculate_gradient(predeccessor)
+                current = adjoint.get_adjoint_value(predeccessor)
+                if type(current) == float or type(deeper) == float:
+                    gradient += current * deeper
+                else:
+                    gradient += deeper @ current
+            return gradient
+
 
     gradient = _calculate_gradient(id(J))   
+    
+    gradient_time = time.perf_counter() - tic
+    print(f"Gradient time: {gradient_time:0.4f} seconds")
     
     return gradient

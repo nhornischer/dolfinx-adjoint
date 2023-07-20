@@ -19,6 +19,7 @@ where
 We solve this problem with a residual equation
     F(u) = a(u, v) - L(v) != 0
 """
+import time
 
 import numpy as np
 import scipy.sparse as sps
@@ -28,7 +29,7 @@ from dolfinx import mesh, fem, io, nls
 from dolfinx_adjoint import *
 from petsc4py.PETSc import ScalarType
 import ufl 
-
+tic = time.perf_counter()
 # Define mesh and finite element space
 domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, mesh.CellType.triangle)
 V = fem.FunctionSpace(domain, ("CG", 1))                
@@ -63,101 +64,65 @@ solver.solve(uh)                                        # Overloaded
 g = fem.Function(W, name="g")                               # Overloaded
 g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))   
 # Define the objective function
-J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx
+J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + 0.5 *ufl.inner(f,f) * ufl.dx
 J = fem.assemble_scalar(fem.form(J_form))                       # Overloaded
 print("J(u) = ", J)
+simulation_time = time.perf_counter() - tic
+print(f"Simulation time: {simulation_time:0.4f} seconds")
 
-
-print("\n-----------Adjoint approach-----------\n")
 visualise()
-# Test if it can compute the gradient of J with respect to uh
-print(compute_gradient(J, f))
+print("dJ/df =", compute_gradient(J, f))
 
+import unittest
 
-"""
-We now turn to the adjoint approach to calculating the gradient of J(u) with respect to f.
-Therefore, we first define a new reduced functional R(f) = J(u(f),f) and take the derivative with respect to f:
-    dJ/df = dR/df = ∂J/∂u * du/df + ∂J/∂f                       (1)
+class TestPoisson(unittest.TestCase):
+    def setUp(self) -> None:
+        """
+        We now turn to the explicit adjoint approach to calculate the gradient of J(u) with respect to f.
+        Therefore, we first define a new reduced functional R(f) = J(u(f),f) and take the derivative with respect to f:
+            dJ/df = dR/df = ∂J/∂u * du/df + ∂J/∂f                       (1)
 
-The first term ∂J/∂u and the last term ∂J/∂f are easy to compute.
-The second term du/df will be handled using the adjoint problem.
+        The first term ∂J/∂u and the last term ∂J/∂f are easy to compute.
+        The second term du/df will be handled using the adjoint problem.
 
-By taking the derivative of F(u) = 0 with respect to f, we obtain a representation of du/df:
-    dF/df = ∂F/∂u * du/df + ∂F/∂f = 0
-    => du/df = -(∂F/∂u)^-1 * ∂F/∂f                              (2)
+        By taking the derivative of F(u) = 0 with respect to f, we obtain a representation of du/df:
+            dF/df = ∂F/∂u * du/df + ∂F/∂f = 0
+            => du/df = -(∂F/∂u)^-1 * ∂F/∂f                              (2)
 
-Inserting (2) into (1) yields
+        Inserting (2) into (1) yields
 
-    dJ/df = - ∂J/∂u * (∂F/∂u)^-1 * ∂F/∂f + ∂J/∂f                (3)
+            dJ/df = - ∂J/∂u * (∂F/∂u)^-1 * ∂F/∂f + ∂J/∂f                (3)
 
-Our adjoint approach thus is to solve the adjoint problem
-    ∂Fᵀ/∂u * λ =  - ∂Jᵀ/∂u                                      (4)
-and then compute the gradient of J(u) with respect to f using (3).
-    dJ/df = λᵀ * ∂F/∂f + ∂J/∂f                                  (5)   
+        Our adjoint approach thus is to solve the adjoint problem
+            ∂Fᵀ/∂u * λ =  - ∂Jᵀ/∂u                                      (4)
+        and then compute the gradient of J(u) with respect to f using (3).
+            dJ/df = λᵀ * ∂F/∂f + ∂J/∂f                                  (5)   
 
-In our case ∂J/∂f = 0, so we only need to compute λᵀ * ∂F/∂f.
-"""
-def gradient():
-    dFdu = fem.assemble_matrix(fem.form(ufl.derivative(F, uh)), bcs=[bc])
-    dFdu.finalize()
-    shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
-    dFduSparse = sps.csr_matrix((dFdu.data, dFdu.indices, dFdu.indptr), shape=shape).transpose()
+        In our case ∂J/∂f = 0, so we only need to compute λᵀ * ∂F/∂f.
+        """
+        tic = time.perf_counter()
+        dFdu = fem.assemble_matrix(fem.form(ufl.derivative(F, uh)), bcs=[bc])
+        dFdu.finalize()
+        shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
+        dFduSparse = sps.csr_matrix((dFdu.data, dFdu.indices, dFdu.indptr), shape=shape).transpose()
 
-    dJdu = - fem.assemble_vector(fem.form(ufl.derivative(J_form, uh))).array.transpose()
+        dJdu = - fem.assemble_vector(fem.form(ufl.derivative(J_form, uh))).array.transpose()
 
-    adjoint_solution = sps.linalg.spsolve(dFduSparse, dJdu)
+        adjoint_solution = sps.linalg.spsolve(dFduSparse, dJdu)
 
-    dFdf = fem.assemble_matrix(fem.form(ufl.derivative(F, f))).to_dense()
+        dFdf = fem.assemble_matrix(fem.form(ufl.derivative(F, f))).to_dense()
 
-    gradient = adjoint_solution.transpose() @ dFdf
+        dJdf = fem.assemble_vector(fem.form(ufl.derivative(J_form, f)))
 
-    dJ = fem.Function(W, name="dJdf")
-    dJ.vector.setArray(gradient)
-    return dJ
+        gradient = adjoint_solution.transpose() @ dFdf + dJdf.array
 
-dJ = gradient()
+        self.dJ = fem.Function(W, name="dJdf")
+        self.dJ.vector.setArray(gradient)
+        self.explicitAdjoint_time = time.perf_counter() - tic
+        print(f"Explicit time: {self.explicitAdjoint_time:0.4f} seconds")
 
-print(dJ.vector.array[:])
+    
 
-exit()
-
-with io.XDMFFile(domain.comm, "demo_Poisson.xdmf", "w") as xdmf:
-    xdmf.write_mesh(domain)
-    xdmf.write_function(uh, 0.0)
-    xdmf.write_function(dJ, 0.0)
-
-"""
-In order to verify the compute gradient we perform a convergence study.
-Using a Taylor expansion of R(f) around a perturbation δf, we obtain
-    || R(f + ϵδf) - R(f)|| → 0 with O(ϵ).
-However, with the gradient we obtain quadratic convergence
-    || R(f + ϵδf) - R(f) - ϵ dR/df ⋅ δf|| → 0 with O(ϵ²).
-"""
-
-# Define the perturbation
-delta = fem.Function(W, name="δf")
-delta.interpolate(lambda x: x[0] * x[1])
-J_value = fem.assemble_scalar(fem.form(J_form))
-
-values_linear = []
-values_quadratic = []
-for epsilon in np.linspace(1, 0, 10):
-    f.interpolate(lambda x: x[0] + x[1] + epsilon * (x[0] * x[1]))
-    solver.solve(uh)
-    J_eps = fem.assemble_scalar(fem.form(J_form))
-    dJ = gradient()
-
-    values_linear.append(np.abs(J_eps - J_value))
-    values_quadratic.append(np.abs(J_eps - J_value - epsilon * dJ.vector.array.transpose() @ delta.vector.array))
-
-print("Linear convergence: ", values_linear)
-print("Quadratic convergence: ", values_quadratic)
-
-import matplotlib.pyplot as plt
-plt.figure(tight_layout=True)
-plt.plot(values_linear, label="linear")
-plt.plot(values_quadratic, label="quadratic")
-plt.xticks([0, 9], [1, 0])
-plt.legend()
-plt.show()
-
+    def test_gradient(self):
+        print("Testing gradient")
+        self.assertTrue(np.allclose(compute_gradient(J, f), self.dJ.vector.array[:]))
