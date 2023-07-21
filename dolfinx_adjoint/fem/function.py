@@ -7,9 +7,6 @@ class Function(fem.Function):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         graph.add_node(id(self), name=self.name)
-        _node = graph.Adjoint(self)
-        _node.set_adjoint_method(lambda x: 1.0)
-        _node.add_to_graph()
 
     def copy(self) -> Function:
         output = super().copy()
@@ -18,10 +15,7 @@ class Function(fem.Function):
 
         return output
     
-# class Constant(fem.Constant):
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         graph.add_node(id(self), name="Constant")
-#         _node = graph.Adjoint(self)
-#         _node.set_adjoint_method(lambda x: 1.0)
-#         _node.add_to_graph()
+class Constant(fem.Constant):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        graph.add_node(id(self), name="Constant")

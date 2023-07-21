@@ -25,15 +25,26 @@ def add_edge(node1 : int, node2 : int):
     graph = get_graph()
     graph.add_edge(node1, node2)
 
-def add_attribute(node : int, key : str, value):
+def add_node_attribute(node : int, key : str, value):
     """Add an attribute to a node"""
     graph = get_graph()
     graph.nodes[node][key] = value
 
-def get_attribute(node : int, key : str):
+def add_edge_attribute(node : int, predecessor : int, key : str, value):
+    """Add an attribute to an edge"""
+    graph = get_graph()
+    print(graph.nodes[node]["name"], graph.nodes[predecessor]["name"])
+    nx.set_edge_attributes(graph, {(predecessor, node) : value}, name=key)
+
+def get_node_attribute(node : int, key : str):
     """Get an attribute from a node"""
     graph = get_graph()
     return graph.nodes[node][key]
+
+def get_edge_attribute(node : int, predecessor : int, key : str):
+    """Get an attribute from an edge"""
+    graph = get_graph()
+    return graph.edges[(predecessor, node)][key]
     
 def add_incoming_edges(node : int, objects : list):
     for object in objects:
@@ -46,15 +57,14 @@ def visualise(graph = None, filename = "graph.pdf"):
     if graph is None:
         graph = get_graph()
     labels = nx.get_node_attributes(graph, "name")
-    col = nx.get_node_attributes(graph, "color")
+    col = nx.get_node_attributes(graph, "name")
     nx.draw(graph, labels=labels)
     plt.savefig(filename)
 
 class Adjoint:
-
-    def __init__(self, object):
+    def __init__(self, object, adjoint):
         self.id = id(object)
-        self.adjoints = {}
+        self.adjoint_id = id(adjoint)
 
     def set_adjoint_method(self, function : callable):
         """Set the adjoint method for the object"""
@@ -63,24 +73,14 @@ class Adjoint:
         # Temporary fix
         graph.nodes[self.id]["adjoint"] = function
 
-    def set_adjoint_value(self, value, adjoint_node : int):
-        """Set the adjoint value for the object"""
-        self.adjoints[str(adjoint_node)] = value
-
-    def get_adjoint_value(self, adjoint_node : int):
-        """Get the adjoint value for the object"""
-        return self.adjoints[str(adjoint_node)]
-
-    def calculate_adjoint(self, adjoint_node : int):
+    def calculate_adjoint(self):
         """Calculate the adjoint value for the object"""
-        adjoint_object = ctypes.cast(adjoint_node, ctypes.py_object).value
-        adjoint_value = self.adjoint_method(adjoint_object)
-
-        self.set_adjoint_value(adjoint_value, adjoint_node)
+        adjoint_object = ctypes.cast(self.adjoint_id, ctypes.py_object).value
+        self.value = self.adjoint_method(adjoint_object)
 
     def add_to_graph(self):
         """Add the object to the graph"""
-        add_attribute(self.id, "adjoint", self)
+        add_edge_attribute(self.id, self.adjoint_id, "adjoint", self)
 
 
     

@@ -46,15 +46,10 @@ def compute_gradient(J, m):
 
     tic = time.perf_counter()
     # Possible to do this in parallel
-    for node_id in adjoint_graph.nodes:
-        # Get predeccessor
-        predeccessors = list(adjoint_graph.predecessors(node_id))
-
-        adjoint = graph.get_attribute(node_id, "adjoint")
-        if len(predeccessors) != 0:
-            for predeccessor in predeccessors:
-                print(f"Calculating: d{_graph.nodes[node_id]['name']}/d{_graph.nodes[predeccessor]['name']}")
-                adjoint.calculate_adjoint(predeccessor)
+    for edge in adjoint_graph.edges:
+        print("d",adjoint_graph.nodes[edge[1]]["name"],"/d", adjoint_graph.nodes[edge[0]]["name"])
+        adjoint = graph.get_edge_attribute(edge[1], edge[0], "adjoint")
+        adjoint.calculate_adjoint()
 
     adjoint_time = time.perf_counter() - tic
     print(f"Adjoint time: {adjoint_time:0.4f} seconds")
@@ -62,19 +57,18 @@ def compute_gradient(J, m):
     tic = time.perf_counter()
     # Calculate the gradient
     def _calculate_gradient(node_id):
-        adjoint = graph.get_attribute(node_id, "adjoint")
-        predeccessors = list(adjoint_graph.predecessors(node_id))
-        if len(predeccessors) == 0:
+        edges = adjoint_graph.in_edges(node_id)
+        if len(edges) == 0:
             return 1.0
         else:
             gradient = 0.0
-            for predeccessor in predeccessors:
-                deeper = _calculate_gradient(predeccessor)
-                current = adjoint.get_adjoint_value(predeccessor)
-                if type(current) == float or type(deeper) == float:
-                    gradient += current * deeper
+            for edge in edges:
+                deeper = _calculate_gradient(edge[0])
+                adjoint = graph.get_edge_attribute(node_id, edge[0], "adjoint")
+                if type(adjoint.value) == float or type(deeper) == float:
+                    gradient += adjoint.value * deeper
                 else:
-                    gradient += deeper @ current
+                    gradient += deeper @ adjoint.value
             return gradient
 
 
