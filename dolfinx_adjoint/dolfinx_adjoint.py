@@ -29,9 +29,7 @@ def compute_gradient(J, m):
     if not adjoint_graph.has_node(id(m)):
         raise Exception("There is not adjoint path from the objective function to the variable")
 
-
     graph.visualise(adjoint_graph, filename = "adjoint_graph_transformed.pdf")
-
 
     tic = time.perf_counter()
     # Possible to do this in parallel

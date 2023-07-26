@@ -15,7 +15,15 @@ class Function(fem.Function):
 
         return output
     
-class Constant(fem.Constant):
+class Constant(fem.Function):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        graph.add_node(id(self), name="Constant", tag= "data")
+        domain, c = args
+        DG0 = fem.FunctionSpace(domain, ("DG", 0))
+        super().__init__(DG0)
+
+        self.vector.array[:] = c
+        self.c = c
+        self.dim = 0
+
+        graph.add_node(id(self), name="Constant", tag = "data")
+        

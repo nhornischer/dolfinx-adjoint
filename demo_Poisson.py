@@ -47,7 +47,8 @@ bc = fem.dirichletbc(uD, boundary_dofs)                     # Should possibly be
 uh = fem.Function(V, name="uₕ")                             # Overloaded
 v = ufl.TestFunction(V)
 f = fem.Function(W, name="f")                               # Overloaded
-nu = fem.Constant(domain, ScalarType(1.0))              # Should possibly be overloaded
+nu = fem.Constant(domain, ScalarType(1.0))
+            # Should possibly be overloaded
 f.interpolate(lambda x: x[0] + x[1])                    # Should possibly be overloaded
 
 # Define the variational form and the residual equation
@@ -58,20 +59,22 @@ F = a - L
 # Define the problem solver and solve it
 problem = fem.petsc.NonlinearProblem(F, uh, bcs=[bc])             # Overloaded
 solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)          # Overloaded
-solver.solve(uh)                                        # Overloaded
+solver.solve(uh)                                                  # Overloaded
+
+mu = fem.Constant(domain, ScalarType(1.0))
 
 # Define profile g
-g = fem.Function(W, name="g")                               # Overloaded
+g = fem.Function(W, name="g")                                   # Overloaded
 g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))   
 # Define the objective function
-J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + 0.5 *ufl.inner(f,f) * ufl.dx
+J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + 0.5 *ufl.inner(f,f) * ufl.dx + ufl.inner(mu, mu) * ufl.dx
 J = fem.assemble_scalar(fem.form(J_form))                       # Overloaded
 print("J(u) = ", J)
 simulation_time = time.perf_counter() - tic
 print(f"Simulation time: {simulation_time:0.4f} seconds")
 
 visualise()
-print("dJ/df =", compute_gradient(J, f))
+print("dJ/dm =", compute_gradient(J, mu))
 
 import unittest
 

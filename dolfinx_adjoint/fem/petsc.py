@@ -11,7 +11,6 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
         ufl_form = args[0]
         uh = args[1]
 
-
         dependencies_coefficients = list(ufl_form.coefficients())
         dependencies_constants = list(ufl_form.constants())
         graph.add_incoming_edges(id(self), dependencies_coefficients)
