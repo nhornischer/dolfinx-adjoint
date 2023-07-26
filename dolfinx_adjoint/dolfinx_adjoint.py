@@ -7,7 +7,6 @@ import ctypes
 import networkx as nx
 
 def compute_gradient(J, m):
-    tic = time.perf_counter()
     _graph = graph.get_graph()
 
     adjoint_path = []
@@ -16,33 +15,23 @@ def compute_gradient(J, m):
     adjoint_graph = _graph.subgraph(adjoint_path).copy()
     graph.visualise(adjoint_graph, filename = "adjoint_graph.pdf")
 
-    circles = list(nx.simple_cycles(adjoint_graph))
-    # print(list(circles))
-    # Obtain the nodes on the circle that are connected to other node outside the circle
-    start_nodes = []
-    end_nodes = []
-    for circle in circles:
-        for node in circle:
-            for adjoint_node in adjoint_graph.predecessors(node):
-                if not adjoint_node in circle:
-                    start_nodes.append(node)
-            for adjoint_node in adjoint_graph.successors(node):
-                if not adjoint_node in circle:
-                    end_nodes.append(node)
+    # Remove all the edges that are not tagged with "explicit or implicit"
+    for edge in list(adjoint_graph.edges):
+        if adjoint_graph.edges[edge]["tag"] != "explicit" and adjoint_graph.edges[edge]["tag"] != "implicit":
+            adjoint_graph.remove_edge(edge[0], edge[1])
 
-    # Remove the nodes of the circle that are not a start or end node
-    for circle in circles:
-        for node in circle:
-            if not node in start_nodes and not node in end_nodes:
-                adjoint_graph.remove_node(node)
-    for i, node in enumerate(start_nodes):
-        adjoint_graph.add_edge(node, end_nodes[i], name="solving")
-        adjoint_graph.remove_edge(end_nodes[i], node)
+    # Remove all the nodes that are not connected to the objective function
+    for node in list(adjoint_graph.nodes):
+        if not nx.has_path(adjoint_graph, node, id(J)):
+            adjoint_graph.remove_node(node)
+
+    # Check if m is in the graph
+    if not adjoint_graph.has_node(id(m)):
+        raise Exception("There is not adjoint path from the objective function to the variable")
+
 
     graph.visualise(adjoint_graph, filename = "adjoint_graph_transformed.pdf")
 
-    graph_time = time.perf_counter() - tic
-    print(f"Graph time: {graph_time:0.4f} seconds")
 
     tic = time.perf_counter()
     # Possible to do this in parallel
