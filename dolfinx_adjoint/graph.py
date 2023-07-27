@@ -40,9 +40,9 @@ def add_edge_attribute(node : int, predecessor : int, key : str, value, **kwargs
     """Add an attribute to an edge"""
     graph = get_graph()
     if "tag" in kwargs:
-        tag = kwargs["tag"]
+        tag = kwargs["tag"]    
+        nx.set_edge_attributes(graph, {(predecessor, node) : tag}, name="tag")
     nx.set_edge_attributes(graph, {(predecessor, node) : value}, name=key)
-    nx.set_edge_attributes(graph, {(predecessor, node) : tag}, name="tag")
 
 def get_node_attribute(node : int, key : str):
     """Get an attribute from a node"""
