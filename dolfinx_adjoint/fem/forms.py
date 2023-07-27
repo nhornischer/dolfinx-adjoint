@@ -19,7 +19,8 @@ def form(*args, **kwargs):
             coefficient.dim == 0
             return fem.assemble_scalar(fem.form(ufl_dev))
         except:
-            return fem.assemble_vector(fem.form(ufl_dev)).array[:]
+            array = fem.assemble_vector(fem.form(ufl_dev)).array[:]
+            return array
     
     for coefficient in ufl_form.coefficients():
         _node = graph.Adjoint(output, coefficient)

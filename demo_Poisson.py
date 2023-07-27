@@ -25,6 +25,7 @@ import numpy as np
 import scipy.sparse as sps
 
 from mpi4py import MPI
+import dolfinx
 from dolfinx import mesh, fem, io, nls
 from dolfinx_adjoint import *
 from petsc4py.PETSc import ScalarType
@@ -39,7 +40,7 @@ W = fem.FunctionSpace(domain, ("DG", 0))
 domain.topology.create_connectivity(domain.topology.dim -1, domain.topology.dim)
 boundary_facets = mesh.exterior_facet_indices(domain.topology)
 uD = fem.Function(V, name="u_D")                            # Overloaded
-uD.interpolate(lambda x: 0.0 * x[0])                    # Should possibly be overloaded
+uD.interpolate(lambda x: 1.0 * x[0])                    # Should possibly be overloaded
 boundary_dofs = fem.locate_dofs_topological(V, domain.topology.dim - 1, boundary_facets)
 bc = fem.dirichletbc(uD, boundary_dofs)                     # Should possibly be overloaded
 
@@ -47,7 +48,7 @@ bc = fem.dirichletbc(uD, boundary_dofs)                     # Should possibly be
 uh = fem.Function(V, name="uₕ")                             # Overloaded
 v = ufl.TestFunction(V)
 f = fem.Function(W, name="f")                               # Overloaded
-nu = fem.Constant(domain, ScalarType(1.0))
+nu = fem.Constant(domain, ScalarType(1.0), name = "ν")      # Overloaded
             # Should possibly be overloaded
 f.interpolate(lambda x: x[0] + x[1])                    # Should possibly be overloaded
 
@@ -60,21 +61,47 @@ F = a - L
 problem = fem.petsc.NonlinearProblem(F, uh, bcs=[bc])             # Overloaded
 solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)          # Overloaded
 solver.solve(uh)                                                  # Overloaded
-
-mu = fem.Constant(domain, ScalarType(1.0))
-
 # Define profile g
 g = fem.Function(W, name="g")                                   # Overloaded
 g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))   
 # Define the objective function
-J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + 0.5 *ufl.inner(f,f) * ufl.dx + ufl.inner(mu, mu) * ufl.dx
+alpha = fem.Constant(domain, ScalarType(1e-6), name = "α")      # Overloaded
+J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + alpha * 0.5 *ufl.inner(f,f) * ufl.dx
 J = fem.assemble_scalar(fem.form(J_form))                       # Overloaded
 print("J(u) = ", J)
 simulation_time = time.perf_counter() - tic
 print(f"Simulation time: {simulation_time:0.4f} seconds")
 
 visualise()
-print("dJ/dm =", compute_gradient(J, nu))
+
+
+# dJdf = compute_gradient(J, f)
+# dJdnu = compute_gradient(J, nu)
+# print("dJ/df =", dJdf)
+# print("dJ/dnu =", dJdnu)
+
+dJdbc = compute_gradient(J, uD)
+
+dJdbc_function = dolfinx.fem.Function(V, name="dJdbc")
+dJdbc_function.vector.setArray(dJdbc)
+
+
+with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_dJdbc.xdmf", "w") as file:
+    file.write_mesh(domain)
+    file.write_function(dJdbc_function)
+
+# dJdf_function = dolfinx.fem.Function(W, name="dJdf")
+# dJdf_function.vector.setArray(dJdf)
+# 
+# 
+# with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson.xdmf", "w") as file:
+#     file.write_mesh(domain)
+#     file.write_function(uh)
+# with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_dJdf.xdmf", "w") as file:
+#     file.write_mesh(domain)
+#     file.write_function(dJdf_function)
+
+
 
 import unittest
 

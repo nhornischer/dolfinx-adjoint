@@ -22,7 +22,9 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
             V = uh.function_space
             shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
             dFduSparse = sps.csr_matrix((dFdu.data, dFdu.indices, dFdu.indptr), shape=shape)
-            
+            print("u: ", uh.x.array[:].shape)
+            print("f: ", coefficient.x.array[:].shape)
+            print("dFdu", dFduSparse.shape)
 
             dFdm_form = fem.form(ufl.derivative(ufl_form, coefficient))
             try:
@@ -30,8 +32,12 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
                 dFdm = fem.assemble_vector(dFdm_form).array[:]
             except:
                 dFdm = fem.assemble_matrix(dFdm_form).to_dense()
-
+            
+            print("dFdm", dFdm.shape)
+            
             dudm = sps.linalg.spsolve(dFduSparse, -dFdm)
+
+            print("dudm",dudm.shape)
 
             return dudm.T
         
@@ -41,8 +47,6 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
             _node.set_adjoint_method(adjoint_coefficient)
             _node.add_to_graph()
 
-        # TODO: add adjoint for constants
-
         def adjoint_boundary_values(bc):
             # TODO: under development
             dFdu = fem.assemble_matrix(fem.form(ufl.derivative(ufl_form, uh)), bcs=bcs)
@@ -50,12 +54,30 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
             V = uh.function_space
             shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
             dFduSparse = sps.csr_matrix((dFdu.data, dFdu.indices, dFdu.indptr), shape=shape)
+            print("u: ", uh.x.array[:].shape)
+            print("g: ", bc.g.x.array[:].shape)
+            print("dFdu", dFduSparse.shape)
+
+            A = fem.assemble_matrix(self._a)
+            A.finalize()
+            A = A.to_dense()
+            dFdbc = A
+            print("dFdbc",dFdbc.shape)
+
+            dudbc = sps.linalg.spsolve(dFduSparse, -dFdbc)
+
+            return dudbc.T
 
         try:
             bcs = kwargs["bcs"]
             # TODO: add adjoint for boundary values
             for bc in bcs:
                 graph.add_edge(id(bc), id(self))
+                _node = graph.Adjoint(uh, bc, "implicit")
+                _node.set_adjoint_method(adjoint_boundary_values)
+                _node.add_to_graph()
+
+
         except: 
             pass
 

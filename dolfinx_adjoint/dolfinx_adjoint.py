@@ -34,7 +34,7 @@ def compute_gradient(J, m):
     tic = time.perf_counter()
     # Possible to do this in parallel
     for edge in adjoint_graph.edges:
-        print("d",adjoint_graph.nodes[edge[1]]["name"],"/d", adjoint_graph.nodes[edge[0]]["name"])
+        # print("d",adjoint_graph.nodes[edge[1]]["name"],"/d", adjoint_graph.nodes[edge[0]]["name"])
         adjoint = graph.get_edge_attribute(edge[1], edge[0], "adjoint")
         adjoint.calculate_adjoint()
 

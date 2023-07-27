@@ -16,14 +16,6 @@ class Function(fem.Function):
         graph.add_edge(id(self), id(output))
         return output
     
-    def interpolate(self, *args, **kwargs) -> Function:
-        output = super().interpolate(*args, **kwargs)
-
-        graph.add_node(id(output), name="interpolate", tag="operation")
-        graph.add_edge(id(output), id(self))
-
-        return output
-    
     
     
 class Constant(fem.Function):
