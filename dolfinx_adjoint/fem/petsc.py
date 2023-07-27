@@ -23,7 +23,13 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
             shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
             dFduSparse = sps.csr_matrix((dFdu.data, dFdu.indices, dFdu.indptr), shape=shape)
             
-            dFdm = fem.assemble_matrix(fem.form(ufl.derivative(ufl_form, coefficient))).to_dense()
+
+            dFdm_form = fem.form(ufl.derivative(ufl_form, coefficient))
+            try:
+                coefficient.dim == 0
+                dFdm = fem.assemble_vector(dFdm_form).array[:]
+            except:
+                dFdm = fem.assemble_matrix(dFdm_form).to_dense()
 
             dudm = sps.linalg.spsolve(dFduSparse, -dFdm)
 

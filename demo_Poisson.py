@@ -74,7 +74,7 @@ simulation_time = time.perf_counter() - tic
 print(f"Simulation time: {simulation_time:0.4f} seconds")
 
 visualise()
-print("dJ/dm =", compute_gradient(J, mu))
+print("dJ/dm =", compute_gradient(J, nu))
 
 import unittest
 
@@ -128,4 +128,4 @@ class TestPoisson(unittest.TestCase):
 
     def test_gradient(self):
         print("Testing gradient")
-        self.assertTrue(np.allclose(compute_gradient(J, f), self.dJ.vector.array[:]))
+        self.assertTrue(np.allclose(compute_gradient(J, f), self.dJ.vector.array[:])) 
