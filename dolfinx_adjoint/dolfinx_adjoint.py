@@ -1,8 +1,6 @@
 from dolfinx_adjoint import graph
 import numpy as np
 
-import time
-
 import ctypes
 import networkx as nx
 
@@ -31,17 +29,12 @@ def compute_gradient(J, m):
 
     graph.visualise(adjoint_graph, filename = "adjoint_graph_transformed.pdf")
 
-    tic = time.perf_counter()
     # Possible to do this in parallel
     for edge in adjoint_graph.edges:
         # print("d",adjoint_graph.nodes[edge[1]]["name"],"/d", adjoint_graph.nodes[edge[0]]["name"])
         adjoint = graph.get_edge_attribute(edge[1], edge[0], "adjoint")
         adjoint.calculate_adjoint()
 
-    adjoint_time = time.perf_counter() - tic
-    print(f"Adjoint time: {adjoint_time:0.4f} seconds")
-
-    tic = time.perf_counter()
     # Calculate the gradient
     def _calculate_gradient(node_id):
         edges = adjoint_graph.in_edges(node_id)
@@ -60,8 +53,5 @@ def compute_gradient(J, m):
 
 
     gradient = _calculate_gradient(id(J))   
-    
-    gradient_time = time.perf_counter() - tic
-    print(f"Gradient time: {gradient_time:0.4f} seconds")
     
     return gradient

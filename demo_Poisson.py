@@ -19,7 +19,6 @@ where
 We solve this problem with a residual equation
     F(u) = a(u, v) - L(v) != 0
 """
-import time
 
 import numpy as np
 import scipy.sparse as sps
@@ -30,7 +29,6 @@ from dolfinx import mesh, fem, io, nls
 from dolfinx_adjoint import *
 from petsc4py.PETSc import ScalarType
 import ufl 
-tic = time.perf_counter()
 # Define mesh and finite element space
 domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, mesh.CellType.triangle)
 V = fem.FunctionSpace(domain, ("CG", 1))                
@@ -39,18 +37,18 @@ W = fem.FunctionSpace(domain, ("DG", 0))
 # Define the boundary and the boundary conditions
 domain.topology.create_connectivity(domain.topology.dim -1, domain.topology.dim)
 boundary_facets = mesh.exterior_facet_indices(domain.topology)
-uD = fem.Function(V, name="u_D")                            # Overloaded
-uD.interpolate(lambda x: 1.0 * x[0])                    # Should possibly be overloaded
+uD = fem.Function(V, name="u_D")                            
+uD.interpolate(lambda x: 1.0 + 0.0 * x[0])                    
 boundary_dofs = fem.locate_dofs_topological(V, domain.topology.dim - 1, boundary_facets)
-bc = fem.dirichletbc(uD, boundary_dofs)                     # Should possibly be overloaded
+bc = fem.dirichletbc(uD, boundary_dofs)                     
 
 # Define the basis functions and parameters
-uh = fem.Function(V, name="uₕ")                             # Overloaded
+uh = fem.Function(V, name="uₕ")                             
 v = ufl.TestFunction(V)
-f = fem.Function(W, name="f")                               # Overloaded
-nu = fem.Constant(domain, ScalarType(1.0), name = "ν")      # Overloaded
-            # Should possibly be overloaded
-f.interpolate(lambda x: x[0] + x[1])                    # Should possibly be overloaded
+f = fem.Function(W, name="f")                               
+nu = fem.Constant(domain, ScalarType(1.0), name = "ν")      
+            
+f.interpolate(lambda x: x[0] + x[1])                    
 
 # Define the variational form and the residual equation
 a = nu * ufl.inner(ufl.grad(uh), ufl.grad(v)) * ufl.dx
@@ -58,19 +56,17 @@ L = f * v * ufl.dx
 F = a - L
 
 # Define the problem solver and solve it
-problem = fem.petsc.NonlinearProblem(F, uh, bcs=[bc])             # Overloaded
-solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)          # Overloaded
-solver.solve(uh)                                                  # Overloaded
+problem = fem.petsc.NonlinearProblem(F, uh, bcs=[bc])             
+solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)          
+solver.solve(uh)                                                  
 # Define profile g
-g = fem.Function(W, name="g")                                   # Overloaded
+g = fem.Function(W, name="g")                                   
 g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))   
 # Define the objective function
-alpha = fem.Constant(domain, ScalarType(1e-6), name = "α")      # Overloaded
+alpha = fem.Constant(domain, ScalarType(1e-6), name = "α")      
 J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + alpha * 0.5 *ufl.inner(f,f) * ufl.dx
-J = fem.assemble_scalar(fem.form(J_form))                       # Overloaded
+J = fem.assemble_scalar(fem.form(J_form))                       
 print("J(u) = ", J)
-simulation_time = time.perf_counter() - tic
-print(f"Simulation time: {simulation_time:0.4f} seconds")
 
 visualise()
 
@@ -80,7 +76,7 @@ visualise()
 # print("dJ/df =", dJdf)
 # print("dJ/dnu =", dJdnu)
 
-dJdbc = compute_gradient(J, uD)
+dJdbc = compute_gradient(J, bc)
 
 dJdbc_function = dolfinx.fem.Function(V, name="dJdbc")
 dJdbc_function.vector.setArray(dJdbc)
@@ -130,7 +126,6 @@ class TestPoisson(unittest.TestCase):
 
         In our case ∂J/∂f = 0, so we only need to compute λᵀ * ∂F/∂f.
         """
-        tic = time.perf_counter()
         dFdu = fem.assemble_matrix(fem.form(ufl.derivative(F, uh)), bcs=[bc])
         dFdu.finalize()
         shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
@@ -148,9 +143,6 @@ class TestPoisson(unittest.TestCase):
 
         self.dJ = fem.Function(W, name="dJdf")
         self.dJ.vector.setArray(gradient)
-        self.explicitAdjoint_time = time.perf_counter() - tic
-        print(f"Explicit time: {self.explicitAdjoint_time:0.4f} seconds")
-
     
 
     def test_gradient(self):
