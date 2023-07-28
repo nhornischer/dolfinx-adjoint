@@ -71,31 +71,28 @@ print("J(u) = ", J)
 visualise()
 
 
-# dJdf = compute_gradient(J, f)
-# dJdnu = compute_gradient(J, nu)
-# print("dJ/df =", dJdf)
-# print("dJ/dnu =", dJdnu)
-
+dJdf = compute_gradient(J, f)
+dJdnu = compute_gradient(J, nu)
 dJdbc = compute_gradient(J, bc)
 
+print("dJ/dν", dJdnu)
+
+dJdf_function = dolfinx.fem.Function(W, name="dJdf")
+dJdf_function.vector.setArray(dJdf)
 dJdbc_function = dolfinx.fem.Function(V, name="dJdbc")
 dJdbc_function.vector.setArray(dJdbc)
 
-
+with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson.xdmf", "w") as file:
+    file.write_mesh(domain)
+    file.write_function(uh)
+with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_dJdf.xdmf", "w") as file:
+    file.write_mesh(domain)
+    file.write_function(dJdf_function)
 with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_dJdbc.xdmf", "w") as file:
     file.write_mesh(domain)
     file.write_function(dJdbc_function)
 
-# dJdf_function = dolfinx.fem.Function(W, name="dJdf")
-# dJdf_function.vector.setArray(dJdf)
-# 
-# 
-# with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson.xdmf", "w") as file:
-#     file.write_mesh(domain)
-#     file.write_function(uh)
-# with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_dJdf.xdmf", "w") as file:
-#     file.write_mesh(domain)
-#     file.write_function(dJdf_function)
+
 
 
 
