@@ -7,7 +7,6 @@ def form(*args, **kwargs):
     output = fem.form(*args, **kwargs)
     ufl_form = args[0]
     graph.add_node(id(output), name = ufl_form.__class__.__name__)
-
     graph.add_incoming_edges(id(output), ufl_form.coefficients())
     graph.add_incoming_edges(id(output), ufl_form.constants())
 
@@ -17,6 +16,7 @@ def form(*args, **kwargs):
             coefficient.dim == 0
             return fem.assemble_scalar(fem.form(ufl_dev))
         except:
+            print("dJdu", fem.assemble_vector(fem.form(ufl_dev)).array[:].shape, fem.assemble_vector(fem.form(ufl_dev)).array[:])
             return fem.assemble_vector(fem.form(ufl_dev)).array[:]
     
     for coefficient in ufl_form.coefficients():

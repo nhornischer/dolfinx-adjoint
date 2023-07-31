@@ -37,10 +37,24 @@ W = fem.FunctionSpace(domain, ("DG", 0))
 # Define the boundary and the boundary conditions
 domain.topology.create_connectivity(domain.topology.dim -1, domain.topology.dim)
 boundary_facets = mesh.exterior_facet_indices(domain.topology)
-uD = fem.Function(V, name="u_D")                            
-uD.interpolate(lambda x: 1.0 + 0.0 * x[0])                    
-boundary_dofs = fem.locate_dofs_topological(V, domain.topology.dim - 1, boundary_facets)
-bc = fem.dirichletbc(uD, boundary_dofs)                     
+uD_L = fem.Function(V, name="u_D")                            
+uD_L.interpolate(lambda x: 1.0 + 0.0 * x[0])   
+uD_R = fem.Function(V, name="u_D")
+uD_R.interpolate(lambda x: 1.0 + 0.0 * x[0])         
+uD_T = fem.Function(V, name="u_D")
+uD_T.interpolate(lambda x: 1.0 + 0.0 * x[1])
+uD_B = fem.Function(V, name="u_D")
+uD_B.interpolate(lambda x: 1.0 + 0.0 * x[1])
+        
+boundary_dofs_L = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[0], 0.0))
+boundary_dofs_R = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[0], 1.0))
+boundary_dofs_T = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[1], 1.0))
+boundary_dofs_B = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[1], 0.0))
+
+bc_L = fem.dirichletbc(uD_L, boundary_dofs_L)     
+bc_R = fem.dirichletbc(uD_R, boundary_dofs_R)   
+bc_T = fem.dirichletbc(uD_T, boundary_dofs_T)
+bc_B = fem.dirichletbc(uD_B, boundary_dofs_B)             
 
 # Define the basis functions and parameters
 uh = fem.Function(V, name="uₕ")                             
@@ -56,7 +70,7 @@ L = f * v * ufl.dx
 F = a - L
 
 # Define the problem solver and solve it
-problem = fem.petsc.NonlinearProblem(F, uh, bcs=[bc])             
+problem = fem.petsc.NonlinearProblem(F, uh, bcs=[bc_L, bc_R, bc_T, bc_B])             
 solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)          
 solver.solve(uh)                                                  
 # Define profile g
@@ -64,16 +78,16 @@ g = fem.Function(W, name="g")
 g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))   
 # Define the objective function
 alpha = fem.Constant(domain, ScalarType(1e-6), name = "α")      
-J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + alpha * 0.5 *ufl.inner(f,f) * ufl.dx
+J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx
 J = fem.assemble_scalar(fem.form(J_form))                       
 print("J(u) = ", J)
-
 visualise()
 
-
 dJdf = compute_gradient(J, f)
+print("dJdf", dJdf.shape, dJdf)
+
 dJdnu = compute_gradient(J, nu)
-dJdbc = compute_gradient(J, bc)
+dJdbc = compute_gradient(J, uD_L)
 
 print("dJ/dν", dJdnu)
 

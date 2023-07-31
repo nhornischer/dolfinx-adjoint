@@ -5,7 +5,12 @@ import ctypes
 import networkx as nx
 
 def compute_gradient(J, m):
+
+    print("###########Computing Gradient###########")
     _graph = graph.get_graph()
+
+    assert _graph.has_node(id(J)), "The objective function is not in the graph"
+    assert _graph.has_node(id(m)), "The variable is not in the graph. Make sure the variable is created using a overloaded dolfinx method."
 
     adjoint_path = []
     for path in nx.all_simple_paths(_graph, source=id(m), target=id(J)):
@@ -22,11 +27,7 @@ def compute_gradient(J, m):
     for node in list(adjoint_graph.nodes):
         if not nx.has_path(adjoint_graph, node, id(J)):
             adjoint_graph.remove_node(node)
-
-    # Check if m is in the graph
-    if not adjoint_graph.has_node(id(m)):
-        raise Exception("There is not adjoint path from the objective function to the variable")
-
+            
     graph.visualise(adjoint_graph, filename = "adjoint_graph_transformed.pdf")
 
     # Possible to do this in parallel

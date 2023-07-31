@@ -116,7 +116,6 @@ V_p, _ = V.sub(1).collapse()
 
 up = fem.Function(V, name="up")
 (u, p) = ufl.split(up)
-u_, p_ = ufl.TrialFunctions(V)
 
 vq = ufl.TestFunction(V)
 (v, q) = ufl.split(vq)
