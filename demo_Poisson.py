@@ -29,6 +29,12 @@ from dolfinx import mesh, fem, io, nls
 from dolfinx_adjoint import *
 from petsc4py.PETSc import ScalarType
 import ufl 
+
+# We first need to create a graph object to store the computational graph. 
+# This is done explicitly to maintain the guideline of FEniCSx.
+
+graph_ = dolfinx_adjoint.graph.Graph()
+
 # Define mesh and finite element space
 domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, mesh.CellType.triangle)
 V = fem.FunctionSpace(domain, ("CG", 1))                
@@ -57,9 +63,9 @@ bc_T = fem.dirichletbc(uD_T, boundary_dofs_T)
 bc_B = fem.dirichletbc(uD_B, boundary_dofs_B)             
 
 # Define the basis functions and parameters
-uh = fem.Function(V, name="uₕ")                             
+uh = fem.Function(V, name="uₕ", graph = graph_)                             
 v = ufl.TestFunction(V)
-f = fem.Function(W, name="f")                               
+f = fem.Function(W, name="f", graph = graph_)                               
 nu = fem.Constant(domain, ScalarType(1.0), name = "ν")      
             
 f.interpolate(lambda x: x[0] + x[1])                    
@@ -70,7 +76,7 @@ L = f * v * ufl.dx
 F = a - L
 
 # Define the problem solver and solve it
-problem = fem.petsc.NonlinearProblem(F, uh, bcs=[bc_L, bc_R, bc_T, bc_B])             
+problem = fem.petsc.NonlinearProblem(F, uh, bcs=[bc_L, bc_R, bc_T, bc_B], graph = graph_)             
 solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)          
 solver.solve(uh)                                                  
 # Define profile g
@@ -79,13 +85,20 @@ g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi
 # Define the objective function
 alpha = fem.Constant(domain, ScalarType(1e-6), name = "α")      
 J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx
-J = fem.assemble_scalar(fem.form(J_form))                       
+J = fem.assemble_scalar(fem.form(J_form, graph = graph_), graph = graph_)                       
 print("J(u) = ", J)
 visualise()
 
-dJdf = compute_gradient(J, f)
-print("dJdf", dJdf.shape, dJdf)
+test = graph_.compute_tlm(id(J), id(f))
+print(test)
+test = graph_.compute_adjoint(id(J), id(f))
+print(test)
+graph_.visualise("demo_Poisson_forward.pdf")
+exit()
 
+dJduh = compute_gradient(J, f)
+print("dJduh", dJduh.shape, dJduh)
+exit()
 dJdnu = compute_gradient(J, nu)
 dJdbc = compute_gradient(J, uD_L)
 
