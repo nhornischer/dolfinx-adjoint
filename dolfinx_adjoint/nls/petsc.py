@@ -18,9 +18,6 @@ class NewtonSolver(nls.petsc.NewtonSolver):
             problem_node = self._graph.get_node(id(args[1]))
             NewtonSolver_edge = graph.Edge(problem_node, NewtonSolver_node)
             self._graph.add_edge(NewtonSolver_edge)
-            
-        graph.add_node(id(self), name="NewtonSolver")
-        graph.add_edge(id(args[1]), id(self))
 
     def solve(self, *args, **kwargs):
         output = super().solve(*args, **kwargs)
@@ -32,6 +29,4 @@ class NewtonSolver(nls.petsc.NewtonSolver):
             NewtonSolver_edge = graph.Edge(NewtonSolver_node, function_node)
             self._graph.add_edge(NewtonSolver_edge)
 
-        # Add the edge from the Function to the NewtonSolver
-        graph.add_edge(id(args[0]), id(self))
         return output

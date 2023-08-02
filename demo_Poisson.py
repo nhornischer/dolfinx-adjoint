@@ -33,7 +33,7 @@ import ufl
 # We first need to create a graph object to store the computational graph. 
 # This is done explicitly to maintain the guideline of FEniCSx.
 
-graph_ = dolfinx_adjoint.graph.Graph()
+graph_ = graph.Graph()
 
 # Define mesh and finite element space
 domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, mesh.CellType.triangle)
@@ -66,9 +66,9 @@ bc_B = fem.dirichletbc(uD_B, boundary_dofs_B)
 uh = fem.Function(V, name="uₕ", graph = graph_)                             
 v = ufl.TestFunction(V)
 f = fem.Function(W, name="f", graph = graph_)                               
-nu = fem.Constant(domain, ScalarType(1.0), name = "ν")      
+nu = fem.Constant(domain, ScalarType(1.0), graph = graph_, name = "ν")      
             
-f.interpolate(lambda x: x[0] + x[1])                    
+f.interpolate(lambda x: x[0] + x[1])
 
 # Define the variational form and the residual equation
 a = nu * ufl.inner(ufl.grad(uh), ufl.grad(v)) * ufl.dx
@@ -87,18 +87,6 @@ alpha = fem.Constant(domain, ScalarType(1e-6), name = "α")
 J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx
 J = fem.assemble_scalar(fem.form(J_form, graph = graph_), graph = graph_)                       
 print("J(u) = ", J)
-visualise()
-
-# test = graph_.compute_adjoint(id(J), id(f))
-
-# test_function= dolfinx.fem.Function(W, name="test")
-# test_function.vector.setArray(test)
-
-# with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_f.xdmf", "w") as file:
-#     file.write_mesh(domain)
-#     file.write_function(test_function)
-
-# print(test.shape,test)
 
 graph_.visualise("demo_Poisson_forward.pdf")
 test = graph_.compute_adjoint(id(J), id(uD_L))
@@ -109,29 +97,17 @@ test_function.vector.setArray(test)
 with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_bc.xdmf", "w") as file:
     file.write_mesh(domain)
     file.write_function(test_function)
+
+test = graph_.compute_adjoint(id(J), id(f))
+
+test_function= dolfinx.fem.Function(W, name="test")
+test_function.vector.setArray(test)
+
+with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_f.xdmf", "w") as file:
+    file.write_mesh(domain)
+    file.write_function(test_function)
 graph_.visualise("demo_Poisson_forward.pdf")
 
-# dJdf = compute_gradient(J, f)
-# print("dJduh", dJdf.shape, dJdf)
-# dJdnu = compute_gradient(J, nu)
-dJdbc = compute_gradient(J, uD_L)
-
-# print("dJ/dν", dJdnu)
-
-# dJdf_function = dolfinx.fem.Function(W, name="dJdf")
-# dJdf_function.vector.setArray(dJdf)
-# dJdbc_function = dolfinx.fem.Function(V, name="dJdbc")
-# dJdbc_function.vector.setArray(dJdbc)
-
-# with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson.xdmf", "w") as file:
-#     file.write_mesh(domain)
-#     file.write_function(uh)
-# with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_dJdf.xdmf", "w") as file:
-#     file.write_mesh(domain)
-#     file.write_function(dJdf_function)
-# with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_dJdbc.xdmf", "w") as file:
-#     file.write_mesh(domain)
-#     file.write_function(dJdbc_function)
 
 
 

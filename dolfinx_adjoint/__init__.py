@@ -8,8 +8,6 @@ for i,module in enumerate(list(sys.modules.keys())):
         dolfinx_modules.append(module)
 
 # print(dolfinx_modules)
-
-from .dolfinx_adjoint import *
-from .graph import *
+from .  import graph
 from . import fem
 from . import nls

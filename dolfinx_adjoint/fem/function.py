@@ -1,5 +1,4 @@
 from dolfinx import fem
-from dolfinx.fem.function import Function
 import dolfinx_adjoint.graph as graph
 
 
@@ -16,27 +15,32 @@ class Function(fem.Function):
 
             function_node = graph.Node(self, name=self.name)
             _graph.add_node(function_node)
-        graph.add_node(id(self), name=self.name, tag="data")
 
-    def copy(self) -> Function:
-        output = super().copy()
-        graph.add_node(id(output), name=self.name + "copy", tag="operation")
-        graph.add_edge(id(self), id(output))
-        return output
     
-    
-    
-class Constant(fem.Function):
+class Constant(object):
+    def __new__(cls, *args, **kwargs):
+        if "graph" in kwargs:
+            domain, c = args
+            if not "name" in kwargs:
+                kwargs["name"] = "Constant"
+            DG0 = fem.FunctionSpace(domain, ("DG", 0))
+            instance = Function(DG0, **kwargs)
+            instance.vector.array[:] = c
+            instance.c = c
+
+        else:
+            if "name" in kwargs:
+                del kwargs["name"]
+            instance = fem.Constant(*args, **kwargs)
+        return instance
+        
     def __init__(self, *args, **kwargs):
-        domain, c = args
-        if not "name" in kwargs:
-            kwargs["name"] = "Constant"
-        DG0 = fem.FunctionSpace(domain, ("DG", 0))
-        super().__init__(DG0, **kwargs)
+        if "graph" in kwargs:
+            _graph = kwargs["graph"]
 
-        self.vector.array[:] = c
-        self.c = c
-        self.dim = 0
+            Constant_node = graph.Node(self)
+            _graph.add_node(Constant_node)
 
-        graph.add_node(id(self), name=self.name, tag = "data")
+
+
         

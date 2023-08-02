@@ -17,10 +17,5 @@ def assemble_scalar(*args, **kwargs):
         assemble_edge = graph.Edge(form_node, assemble_node)
         _graph.add_edge(assemble_edge)
 
-    graph.add_node(id(output), name="assemble_scalar")
-    graph.add_edge(id(args[0]), id(output))
-    _node = graph.Adjoint(output, args[0])
-    _node.set_adjoint_method(lambda args: 1.0)
-    _node.add_to_graph()
     return output
 
