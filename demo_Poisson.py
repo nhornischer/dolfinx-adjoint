@@ -43,7 +43,7 @@ W = fem.FunctionSpace(domain, ("DG", 0))
 # Define the boundary and the boundary conditions
 domain.topology.create_connectivity(domain.topology.dim -1, domain.topology.dim)
 boundary_facets = mesh.exterior_facet_indices(domain.topology)
-uD_L = fem.Function(V, name="u_D")                            
+uD_L = fem.Function(V, name="u_D", graph=graph_)                          
 uD_L.interpolate(lambda x: 1.0 + 0.0 * x[0])   
 uD_R = fem.Function(V, name="u_D")
 uD_R.interpolate(lambda x: 1.0 + 0.0 * x[0])         
@@ -57,7 +57,7 @@ boundary_dofs_R = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[0], 1.0)
 boundary_dofs_T = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[1], 1.0))
 boundary_dofs_B = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[1], 0.0))
 
-bc_L = fem.dirichletbc(uD_L, boundary_dofs_L)     
+bc_L = fem.dirichletbc(uD_L, boundary_dofs_L, graph = graph_)     
 bc_R = fem.dirichletbc(uD_R, boundary_dofs_R)   
 bc_T = fem.dirichletbc(uD_T, boundary_dofs_T)
 bc_B = fem.dirichletbc(uD_B, boundary_dofs_B)             
@@ -89,35 +89,49 @@ J = fem.assemble_scalar(fem.form(J_form, graph = graph_), graph = graph_)
 print("J(u) = ", J)
 visualise()
 
-test = graph_.compute_tlm(id(J), id(f))
-print(test)
-test = graph_.compute_adjoint(id(J), id(f))
-print(test)
-graph_.visualise("demo_Poisson_forward.pdf")
-exit()
+# test = graph_.compute_adjoint(id(J), id(f))
 
-dJduh = compute_gradient(J, f)
-print("dJduh", dJduh.shape, dJduh)
-exit()
-dJdnu = compute_gradient(J, nu)
+# test_function= dolfinx.fem.Function(W, name="test")
+# test_function.vector.setArray(test)
+
+# with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_f.xdmf", "w") as file:
+#     file.write_mesh(domain)
+#     file.write_function(test_function)
+
+# print(test.shape,test)
+
+graph_.visualise("demo_Poisson_forward.pdf")
+test = graph_.compute_adjoint(id(J), id(uD_L))
+
+test_function= dolfinx.fem.Function(V, name="test")
+test_function.vector.setArray(test)
+
+with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_bc.xdmf", "w") as file:
+    file.write_mesh(domain)
+    file.write_function(test_function)
+graph_.visualise("demo_Poisson_forward.pdf")
+
+# dJdf = compute_gradient(J, f)
+# print("dJduh", dJdf.shape, dJdf)
+# dJdnu = compute_gradient(J, nu)
 dJdbc = compute_gradient(J, uD_L)
 
-print("dJ/dν", dJdnu)
+# print("dJ/dν", dJdnu)
 
-dJdf_function = dolfinx.fem.Function(W, name="dJdf")
-dJdf_function.vector.setArray(dJdf)
-dJdbc_function = dolfinx.fem.Function(V, name="dJdbc")
-dJdbc_function.vector.setArray(dJdbc)
+# dJdf_function = dolfinx.fem.Function(W, name="dJdf")
+# dJdf_function.vector.setArray(dJdf)
+# dJdbc_function = dolfinx.fem.Function(V, name="dJdbc")
+# dJdbc_function.vector.setArray(dJdbc)
 
-with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson.xdmf", "w") as file:
-    file.write_mesh(domain)
-    file.write_function(uh)
-with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_dJdf.xdmf", "w") as file:
-    file.write_mesh(domain)
-    file.write_function(dJdf_function)
-with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_dJdbc.xdmf", "w") as file:
-    file.write_mesh(domain)
-    file.write_function(dJdbc_function)
+# with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson.xdmf", "w") as file:
+#     file.write_mesh(domain)
+#     file.write_function(uh)
+# with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_dJdf.xdmf", "w") as file:
+#     file.write_mesh(domain)
+#     file.write_function(dJdf_function)
+# with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_dJdbc.xdmf", "w") as file:
+#     file.write_mesh(domain)
+#     file.write_function(dJdbc_function)
 
 
 

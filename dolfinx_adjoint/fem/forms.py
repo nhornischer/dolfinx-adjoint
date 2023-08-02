@@ -51,6 +51,8 @@ def form(*args, **kwargs):
 class FormEdge(graph.Edge):
     def calculate_tlm(self):
         derivative = ufl.derivative(self.successor.object, self.predecessor.object)
+
+        self.tlm = derivative
         
         self.predecessor.set_adjoint_value(self.successor.get_adjoint_value() * derivative)
 
