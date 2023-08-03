@@ -27,6 +27,11 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
                 if not coefficient_node == None:
                     coefficient_edge = NonlinearProblem_Coefficient_Edge(coefficient_node, u_node, self)
                     _graph.add_edge(coefficient_edge)
+            for constant in self.F_form.constants():
+                constant_node = _graph.get_node(id(constant))
+                if not constant_node == None:
+                    constant_edge = NonlinearProblem_Constant_Edge(constant_node, u_node, self)
+                    _graph.add_edge(constant_edge)
 
             if hasattr(self, "bcs"):
                 for bc in self.bcs:
@@ -106,6 +111,103 @@ class NonlinearProblem_Coefficient_Edge(graph.Edge):
         dFdcoefficient = fem.assemble_matrix(fem.form(dFdcoefficient))
 
         predeccessor_adjoint_value = adjoint_value.T @ dFdcoefficient.to_dense()
+
+        self.predecessor.set_adjoint_value(predeccessor_adjoint_value)
+        return predeccessor_adjoint_value
+    
+class NonlinearProblem_Constant_Edge(graph.Edge):
+    def __init__(self, coefficient_node, u_node, nonlinear_problem):
+        super().__init__(coefficient_node, u_node)
+        self.F = nonlinear_problem.F_form
+        self.u = nonlinear_problem.u
+        self.bcs = nonlinear_problem.bcs
+        if hasattr(nonlinear_problem, "J"):
+            self.J = nonlinear_problem.J
+        else:
+            self.J = None
+
+    def calculate_tlm(self):
+        # Construct the Jacobian J = ∂F/∂u
+        
+        if not self.J == None:
+            V = self.u.function_space
+            du = ufl.TrialFunction(V)
+            self.J = ufl.derivative(self.F, self.u, du)
+
+        self.J = fem.assemble_matrix(fem.form(self.J), bcs = self.bcs)
+        self.J.finalize()
+
+        form = self.F
+        constant = self.predecessor.object
+
+        # Create a function based on the constant in order to use ufl.derivative
+        domain = constant.domain
+        DG0 = fem.FunctionSpace(domain, "DG", 0)
+        function = fem.Function(DG0)
+        function.vector.array[:] = constant.c
+
+        replaced_form = ufl.replace(form, {constant: function})
+
+        dFdconstant = ufl.derivative(replaced_form, function)
+        
+        dFdconstant = fem.assemble_vector(fem.form(dFdconstant))
+
+        V = self.u.function_space
+        shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
+
+        
+        sparse_J = sps.csr_matrix((self.J.data, self.J.indices, self.J.indptr), shape=shape)
+        
+        dudm = sps.linalg.spsolve(sparse_J, -dFdconstant.array[:])
+
+        self.tlm = dudm.T
+
+        adjoint_successor = self.successor.get_adjoint_value()
+
+        adjoint = fem.assemble_vector(fem.form(adjoint_successor))
+        adjoint_predecessor = adjoint.array[:] @ dudm
+
+        self.predecessor.set_adjoint_value(adjoint_predecessor)
+
+        return dudm.T
+    
+    def calculate_adjoint(self):
+
+        adjoint_successor = self.successor.get_adjoint_value()
+
+        adjoint = fem.assemble_vector(fem.form(adjoint_successor))
+
+        if not self.J == None:
+            V = self.u.function_space
+            du = ufl.TrialFunction(V)
+            self.J = ufl.derivative(self.F, self.u, du)
+
+        self.J = fem.assemble_matrix(fem.form(self.J), bcs = self.bcs)
+        self.J.finalize()
+
+        V = self.u.function_space
+        shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
+
+        sparse_J = sps.csr_matrix((self.J.data, self.J.indices, self.J.indptr), shape=shape)
+    
+        adjoint_value = sps.linalg.spsolve(sparse_J.T, -adjoint.array[:])
+        
+        form = self.F
+        constant = self.predecessor.object
+
+        # Create a function based on the constant in order to use ufl.derivative
+        domain = constant.domain
+        DG0 = fem.FunctionSpace(domain, ("DG", 0))
+        function = fem.Function(DG0)
+        function.vector.array[:] = constant.c
+
+        replaced_form = ufl.replace(form, {constant: function})
+
+        dFdconstant = ufl.derivative(replaced_form, function)
+        
+        dFdconstant = fem.assemble_vector(fem.form(dFdconstant))
+
+        predeccessor_adjoint_value = adjoint_value.T @ dFdconstant.array[:]
 
         self.predecessor.set_adjoint_value(predeccessor_adjoint_value)
         return predeccessor_adjoint_value

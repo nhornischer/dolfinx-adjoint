@@ -17,29 +17,25 @@ class Function(fem.Function):
             _graph.add_node(function_node)
 
     
-class Constant(object):
-    def __new__(cls, *args, **kwargs):
-        if "graph" in kwargs:
-            domain, c = args
-            if not "name" in kwargs:
-                kwargs["name"] = "Constant"
-            DG0 = fem.FunctionSpace(domain, ("DG", 0))
-            instance = Function(DG0, **kwargs)
-            instance.vector.array[:] = c
-            instance.c = c
-
-        else:
+class Constant(fem.Constant):
+    def __init__(self, *args, **kwargs):
+        if not "graph" in kwargs:
             if "name" in kwargs:
                 del kwargs["name"]
-            instance = fem.Constant(*args, **kwargs)
-        return instance
-        
-    def __init__(self, *args, **kwargs):
-        if "graph" in kwargs:
+            super().__init__(*args, **kwargs)
+        else:
             _graph = kwargs["graph"]
+            del kwargs["graph"]
+            if "name" in kwargs:
+                name = kwargs["name"]
+                del kwargs["name"]
+            super().__init__(*args, **kwargs)
 
-            Constant_node = graph.Node(self)
+            kwargs = {"name": name}
+            Constant_node = graph.Node(self, **kwargs)
             _graph.add_node(Constant_node)
+            self.domain = args[0]
+            self.c = args[1]
 
 
 
