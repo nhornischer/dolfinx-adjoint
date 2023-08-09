@@ -64,45 +64,13 @@ class Graph:
         nx.draw_shell(nx_graph, labels=labels,node_color = node_colors.values(),  edge_color = edge_colors.values(), with_labels=True)
         nx.draw_networkx_edge_labels(nx_graph, pos=nx.shell_layout(nx_graph), edge_labels=edge_labels)
         plt.savefig(filename)
-
-    def compute_tlm(self, function_id, variable_id):
-        self.reset_adjoint_values()
-        # Set the adjoint value of the function to 1.0
-        self.get_node(function_id).set_adjoint_value(1.0)
-        # Get the paths from the function to the variable
-        paths = self.get_backpropagation_path(variable_id, function_id)
-        for path in paths:
-            for edge in path:
-                edge.calculate_tlm()
-        
-        return self.get_node(variable_id).get_adjoint_value()
     
     def backprop(self, function_id, variable_id):
-        self.reset_adjoint_values()
+        self.reset_grads()
         function_node = self.get_node(function_id)
         grad_func = function_node.get_gradFuncs()[0]
         grad_func(1.0)
-        return self.get_node(variable_id).get_adjoint_value()
-
-
-    def compute_adjoint(self, function_id, variable_id):
-        self.reset_adjoint_values()
-        # Set the adjoint value of the function to 1.0
-        self.get_node(function_id).set_adjoint_value(1.0)
-        # Get the paths from the function to the variable
-        paths = self.get_backpropagation_path(variable_id, function_id)
-        calculated_edges = []
-        for path in paths:
-            for edge in path:
-                if edge in calculated_edges:
-                    continue
-                edge.set_derivative_path()
-                print(f"Calculating {edge.__class__.__name__} from {edge.successor.name} to {edge.predecessor.name}")
-                edge.calculate_adjoint()
-                calculated_edges.append(edge)
-                print(type(self.get_node(edge.predecessor.id).get_adjoint_value()))
-        
-        return self.get_node(variable_id).get_adjoint_value()
+        return self.get_node(variable_id).get_grad()
 
     def get_backpropagation_path(self, from_id, to_id):
         nx_graph = self.to_networkx()
@@ -117,6 +85,9 @@ class Graph:
             edge_paths.append(edge_path)
         return edge_paths
     
-    def reset_adjoint_values(self):
+    def reset_grads(self):
         for node in self.nodes:
-            node.reset_adjoint_value()
+            try:
+                node.reset_grad()
+            except:
+                pass

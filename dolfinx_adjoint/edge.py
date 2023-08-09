@@ -11,15 +11,6 @@ class Edge:
     def set_next_functions(self, funcList):
         self.next_functions  = funcList
 
-    def set_derivative_path(self):
-        pass
-    
-    def add_adjoint(self, adjoint_value):
-        if self.predecessor.get_adjoint_value() is not None:
-            self.predecessor.set_adjoint_value(self.predecessor.get_adjoint_value() + adjoint_value)
-        else:
-            self.predecessor.set_adjoint_value(adjoint_value)
-
     def calculate_tlm(self):
         """
         This method calculates the default tangent linear model (TLM) for
@@ -53,4 +44,4 @@ class Edge:
         for function in self.next_functions:
             function(grad_value)
         if self.next_functions == []:
-            self.add_adjoint(grad_value)
+            self.predecessor.accumulate_grad(grad_value)

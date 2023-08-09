@@ -1,12 +1,11 @@
 class AbstractNode:
     def __init__(self, object, **kwargs):
         self.id = id(object)
-        self.object = object
         self.gradFuncs = []
         if "name" in kwargs:
             self.name = kwargs["name"]
         else:
-            self.name = str(self.object.__module__ + "."+ self.object.__class__.__name__)
+            self.name = str(object.__module__ + "."+ object.__class__.__name__)
 
     def set_gradFuncs(self, list):
         self.gradFuncs = list
@@ -20,15 +19,6 @@ class AbstractNode:
     def get_gradFuncs(self):
         return self.gradFuncs
 
-    def set_adjoint_value(self, value):
-        self.adjoint_value = value
-
-    def get_adjoint_value(self):
-        return self.adjoint_value
-    
-    def reset_adjoint_value(self):
-        self.adjoint_value = None
-
     def __str__(self):
         return str(self.name)
 
@@ -40,11 +30,17 @@ class Node(AbstractNode):
         super().__init__(object, **kwargs)
         self.grad = None
 
-    def set_adjoint_value(self, value):
-        self.adjoint_value = value
+    def set_grad(self, value):
+        self.grad = value
 
-    def get_adjoint_value(self):
-        return self.adjoint_value
+    def get_grad(self):
+        return self.grad
     
-    def reset_adjoint_value(self):
-        self.adjoint_value = None
+    def reset_grad(self):
+        self.grad = None
+
+    def accumulate_grad(self, value):
+        if self.grad is None:
+            self.grad = value
+        else:
+            self.grad += value
