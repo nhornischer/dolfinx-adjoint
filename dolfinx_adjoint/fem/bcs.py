@@ -11,28 +11,27 @@ def dirichletbc(*args, **kwargs):
         _graph = kwargs["graph"]
         del kwargs["graph"]
         output = fem.dirichletbc(*args, **kwargs)
-        output.dofs = args[1]
-        output.values = args[0]
+        dofs = args[1]
+        values = args[0]
 
-        dirichletbc_node = graph.Node(output)
+        dirichletbc_node = graph.AbstractNode(output)
         _graph.add_node(dirichletbc_node)
 
         # Get node accociated with the value stored in args[0]
         value_node = _graph.get_node(id(args[0]))
-        dirichletbc_edge = DirichletBC_Edge(value_node, dirichletbc_node)
+        ctx = [dofs, values]
+        dirichletbc_edge = DirichletBC_Edge(value_node, dirichletbc_node, ctx=ctx)
+        dirichletbc_edge.set_next_functions(value_node.get_gradFuncs())
+        dirichletbc_node.set_gradFuncs([dirichletbc_edge])
         _graph.add_edge(dirichletbc_edge) 
     return output
 
 class DirichletBC_Edge(graph.Edge):
     def calculate_tlm(self):
-        adjoint_value = self.successor.get_adjoint_value()
+        # Extract variables from contextvariable ctx
+        dofs, values = self.ctx
 
         import numpy as np
-        matrix = sps.csr_matrix((np.ones(np.size(self.successor.object.dofs)), (self.successor.object.dofs, self.successor.object.dofs)), (self.successor.object.values.x.array.shape[0], self.successor.object.values.x.array.shape[0]))
+        matrix = sps.csr_matrix((np.ones(np.size(dofs)), (dofs, dofs)), (values.x.array.shape[0], values.x.array.shape[0]))
 
-        adjoint_value = adjoint_value @ matrix
-
-        self.predecessor.set_adjoint_value(adjoint_value)
-
-    def calculate_adjoint(self):
-        return self.calculate_tlm()
+        return self.input_value @ matrix

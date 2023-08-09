@@ -13,280 +13,196 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
             del kwargs["graph"]
             super().__init__(*args, **kwargs)
 
-            self.F_form = args[0]
-            self.u = args[1]
-            
-            if "J" in kwargs:
-                self.J = kwargs["J"]
+            F_form = args[0]
+            u = args[1]
 
-            u_node = _graph.get_node(id(self.u))
-            for coefficient in self.F_form.coefficients():
-                if coefficient == self.u:
+            u_node = _graph.get_node(id(u))
+            for coefficient in F_form.coefficients():
+                if coefficient == u:
                     continue
                 coefficient_node = _graph.get_node(id(coefficient))
                 if not coefficient_node == None:
-                    coefficient_edge = NonlinearProblem_Coefficient_Edge(coefficient_node, u_node, self)
+                    ctx = [F_form, u, coefficient, self.bcs]
+                    coefficient_edge = NonlinearProblem_Coefficient_Edge(coefficient_node, u_node, ctx=ctx)
                     _graph.add_edge(coefficient_edge)
-            for constant in self.F_form.constants():
+                    u_node.append_gradFuncs(coefficient_edge)
+                    coefficient_edge.set_next_functions(coefficient_node.get_gradFuncs())
+                    
+            for constant in F_form.constants():
                 constant_node = _graph.get_node(id(constant))
                 if not constant_node == None:
-                    constant_edge = NonlinearProblem_Constant_Edge(constant_node, u_node, self)
+                    ctx = [F_form, u, constant, self.bcs]
+                    constant_edge = NonlinearProblem_Constant_Edge(constant_node, u_node, ctx=ctx)
                     _graph.add_edge(constant_edge)
+                    u_node.append_gradFuncs(constant_edge)
+                    constant_edge.set_next_functions(constant_node.get_gradFuncs())
 
             if hasattr(self, "bcs"):
                 for bc in self.bcs:
                     bc_node = _graph.get_node(id(bc))
                     if not bc_node == None:
-                        bc_edge = NonlinearProblem_Boundary_Edge(bc_node, u_node, self)
+                        ctx = [F_form, u, self.bcs, self._a]
+                        bc_edge = NonlinearProblem_Boundary_Edge(bc_node, u_node, ctx=ctx)
                         _graph.add_edge(bc_edge)
+                        u_node.append_gradFuncs(bc_edge)
+                        bc_edge.set_next_functions(bc_node.get_gradFuncs())
 
 
 class NonlinearProblem_Coefficient_Edge(graph.Edge):
-    def __init__(self, coefficient_node, u_node, nonlinear_problem):
-        super().__init__(coefficient_node, u_node)
-        self.F = nonlinear_problem.F_form
-        self.u = nonlinear_problem.u
-        self.bcs = nonlinear_problem.bcs
-        if hasattr(nonlinear_problem, "J"):
-            self.J = nonlinear_problem.J
-        else:
-            self.J = None
-
     def calculate_tlm(self):
+        # Extract variables from contextvariable ctx
+        F, u, m, bcs = self.ctx
+
         # Construct the Jacobian J = ∂F/∂u
+        V = u.function_space
+        du = ufl.TrialFunction(V)
+        J = ufl.derivative(F, u, du)
+        J = fem.assemble_matrix(fem.form(J), bcs = bcs)
+        J.finalize()
         
-        if not self.J == None:
-            V = self.u.function_space
-            du = ufl.TrialFunction(V)
-            self.J = ufl.derivative(self.F, self.u, du)
+        # Calculate ∂F/∂m
+        dFdm = ufl.derivative(F, m)
+        dFdm = fem.assemble_matrix(fem.form(dFdm))
 
-        self.J = fem.assemble_matrix(fem.form(self.J), bcs = self.bcs)
-        self.J.finalize()
-        
-        dFdcoefficient = ufl.derivative(self.F, self.predecessor.object)
-
-        dFdcoefficient = fem.assemble_matrix(fem.form(dFdcoefficient))
-
-        V = self.u.function_space
+        # Solve for ∂u/∂m = J⁻¹ ∂F/∂m with a sparse linear solver
         shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
+        sparse_J = sps.csr_matrix((J.data, J.indices, J.indptr), shape=shape)
+        dudm = sps.linalg.spsolve(sparse_J, -dFdm.to_dense())
 
-        
-        sparse_J = sps.csr_matrix((self.J.data, self.J.indices, self.J.indptr), shape=shape)
-        
-        dudm = sps.linalg.spsolve(sparse_J, -dFdcoefficient.to_dense())
+        self.operator = dudm
 
-        self.tlm = dudm.T
-
-        adjoint_successor = self.successor.get_adjoint_value()
-
-        adjoint = fem.assemble_vector(fem.form(adjoint_successor))
-        adjoint_predecessor = adjoint.array[:] @ dudm
-
-        self.predecessor.set_adjoint_value(adjoint_predecessor)
-
-        return dudm.T
+        return self.input_value @ dudm
     
     def calculate_adjoint(self):
+        # Extract variables from contextvariable ctx
+        F, u, m, bcs = self.ctx
 
-        adjoint_successor = self.successor.get_adjoint_value()
+        # Construct the Jacobian J = ∂F/∂u
+        V = u.function_space
+        du = ufl.TrialFunction(V)
+        J = ufl.derivative(F, u, du)
+        J = fem.assemble_matrix(fem.form(J), bcs = bcs)
+        J.finalize()
 
-        adjoint = fem.assemble_vector(fem.form(adjoint_successor))
-
-        if not self.J == None:
-            V = self.u.function_space
-            du = ufl.TrialFunction(V)
-            self.J = ufl.derivative(self.F, self.u, du)
-
-        self.J = fem.assemble_matrix(fem.form(self.J), bcs = self.bcs)
-        self.J.finalize()
-
-        V = self.u.function_space
+        # Solve (J⁻¹)ᵀ λ = -x where x is the input with a sparse linear solver
         shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
+        sparse_J = sps.csr_matrix((J.data, J.indices, J.indptr), shape=shape)
+        adjoint_solution = sps.linalg.spsolve(sparse_J.T, -self.input_value)
 
-        sparse_J = sps.csr_matrix((self.J.data, self.J.indices, self.J.indptr), shape=shape)
-    
-        adjoint_value = sps.linalg.spsolve(sparse_J.T, -adjoint.array[:])
-        
-        dFdcoefficient = ufl.derivative(self.F, self.predecessor.object)
-        dFdcoefficient = fem.assemble_matrix(fem.form(dFdcoefficient))
+        # Calculate ∂F/∂m
+        dFdm = ufl.derivative(F, m)
+        dFdm = fem.assemble_matrix(fem.form(dFdm))
 
-        predeccessor_adjoint_value = adjoint_value.T @ dFdcoefficient.to_dense()
-
-        self.predecessor.set_adjoint_value(predeccessor_adjoint_value)
-        return predeccessor_adjoint_value
+        # Calculate λᵀ * ∂F/∂m
+        return adjoint_solution.T @ dFdm.to_dense()
     
 class NonlinearProblem_Constant_Edge(graph.Edge):
-    def __init__(self, coefficient_node, u_node, nonlinear_problem):
-        super().__init__(coefficient_node, u_node)
-        self.F = nonlinear_problem.F_form
-        self.u = nonlinear_problem.u
-        self.bcs = nonlinear_problem.bcs
-        if hasattr(nonlinear_problem, "J"):
-            self.J = nonlinear_problem.J
-        else:
-            self.J = None
-
     def calculate_tlm(self):
-        # Construct the Jacobian J = ∂F/∂u
         
-        if not self.J == None:
-            V = self.u.function_space
-            du = ufl.TrialFunction(V)
-            self.J = ufl.derivative(self.F, self.u, du)
+        # Extract variables from contextvariable ctx
+        F, u, m, bcs = self.ctx
 
-        self.J = fem.assemble_matrix(fem.form(self.J), bcs = self.bcs)
-        self.J.finalize()
+        # Construct the Jacobian J = ∂F/∂u
+        V = u.function_space
+        du = ufl.TrialFunction(V)
+        J = ufl.derivative(F, u, du)
+        J = fem.assemble_matrix(fem.form(J), bcs = bcs)
+        J.finalize()
 
-        form = self.F
-        constant = self.predecessor.object
-
-        # Create a function based on the constant in order to use ufl.derivative
-        domain = constant.domain
+        # Create a function based on the constant in order to use ufl.derivative to
+        # calculate ∂F/∂m
+        domain = m.domain
         DG0 = fem.FunctionSpace(domain, "DG", 0)
         function = fem.Function(DG0)
-        function.vector.array[:] = constant.c
+        function.vector.array[:] = m.c
+        replaced_form = ufl.replace(F, {m: function})
+        dFdm = ufl.derivative(replaced_form, function)
+        dFdm = fem.assemble_vector(fem.form(dFdm))
 
-        replaced_form = ufl.replace(form, {constant: function})
-
-        dFdconstant = ufl.derivative(replaced_form, function)
-        
-        dFdconstant = fem.assemble_vector(fem.form(dFdconstant))
-
-        V = self.u.function_space
+        # Solve for ∂u/∂m = J⁻¹ ∂F/∂m with a sparse linear solver
         shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
+        sparse_J = sps.csr_matrix((J.data, J.indices, J.indptr), shape=shape)
+        dudm = sps.linalg.spsolve(sparse_J, -dFdm.array[:])
 
-        
-        sparse_J = sps.csr_matrix((self.J.data, self.J.indices, self.J.indptr), shape=shape)
-        
-        dudm = sps.linalg.spsolve(sparse_J, -dFdconstant.array[:])
+        self.operator = dudm
 
-        self.tlm = dudm.T
-
-        adjoint_successor = self.successor.get_adjoint_value()
-
-        adjoint = fem.assemble_vector(fem.form(adjoint_successor))
-        adjoint_predecessor = adjoint.array[:] @ dudm
-
-        self.predecessor.set_adjoint_value(adjoint_predecessor)
-
-        return dudm.T
+        return self.input_value @ dudm
     
     def calculate_adjoint(self):
 
-        adjoint_successor = self.successor.get_adjoint_value()
+        # Extract variables from contextvariable ctx
+        F, u, m, bcs = self.ctx
 
-        adjoint = fem.assemble_vector(fem.form(adjoint_successor))
+        # Construct the Jacobian J = ∂F/∂u
+        V = u.function_space
+        du = ufl.TrialFunction(V)
+        J = ufl.derivative(F, u, du)
+        J = fem.assemble_matrix(fem.form(J), bcs = bcs)
+        J.finalize()
 
-        if not self.J == None:
-            V = self.u.function_space
-            du = ufl.TrialFunction(V)
-            self.J = ufl.derivative(self.F, self.u, du)
-
-        self.J = fem.assemble_matrix(fem.form(self.J), bcs = self.bcs)
-        self.J.finalize()
-
-        V = self.u.function_space
+        # Solve (J⁻¹)ᵀ λ = -x where x is the input with a sparse linear solver
         shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
-
-        sparse_J = sps.csr_matrix((self.J.data, self.J.indices, self.J.indptr), shape=shape)
-    
-        adjoint_value = sps.linalg.spsolve(sparse_J.T, -adjoint.array[:])
-        
-        form = self.F
-        constant = self.predecessor.object
+        sparse_J = sps.csr_matrix((J.data, J.indices, J.indptr), shape=shape)
+        adjoint_solution = sps.linalg.spsolve(sparse_J.T, -self.input_value)
 
         # Create a function based on the constant in order to use ufl.derivative
-        domain = constant.domain
+        # to calculate ∂F/∂m
+        domain = m.domain
         DG0 = fem.FunctionSpace(domain, ("DG", 0))
         function = fem.Function(DG0)
-        function.vector.array[:] = constant.c
+        function.vector.array[:] = m.c
+        replaced_form = ufl.replace(F, {m: function})
+        dFdm = ufl.derivative(replaced_form, function)
+        dFdm = fem.assemble_vector(fem.form(dFdm))
 
-        replaced_form = ufl.replace(form, {constant: function})
-
-        dFdconstant = ufl.derivative(replaced_form, function)
-        
-        dFdconstant = fem.assemble_vector(fem.form(dFdconstant))
-
-        predeccessor_adjoint_value = adjoint_value.T @ dFdconstant.array[:]
-
-        self.predecessor.set_adjoint_value(predeccessor_adjoint_value)
-        return predeccessor_adjoint_value
+        # Calculate λᵀ * ∂F/∂m
+        return  adjoint_solution.T @ dFdm.array[:]
     
 class NonlinearProblem_Boundary_Edge(graph.Edge):
-    def __init__(self, boundary_node, u_node, nonlinear_problem):
-        super().__init__(boundary_node, u_node)
-        self.nonlinear_problem = nonlinear_problem
-        self.F = nonlinear_problem.F_form
-        self.u = nonlinear_problem.u
-        self.bcs = nonlinear_problem.bcs
-        if hasattr(nonlinear_problem, "J"):
-            self.J = nonlinear_problem.J
-        else:
-            self.J = None
-
     def calculate_tlm(self):
+
+        # Extract variables from contextvariable ctx
+        F, u, bcs, dFdbc_form = self.ctx
             
         # Construct the Jacobian J = ∂F/∂u
-        if not self.J == None:
-            V = self.u.function_space
-            du = ufl.TrialFunction(V)
-            self.J = ufl.derivative(self.F, self.u, du)
+        V = u.function_space
+        du = ufl.TrialFunction(V)
+        J = ufl.derivative(F, u, du)
+        J = fem.assemble_matrix(fem.form(J), bcs = bcs)
+        J.finalize()
 
-        self.J = fem.assemble_matrix(fem.form(self.J), bcs = self.bcs)
-        self.J.finalize()
-
-        print("dFdu", self.J.to_dense().shape, self.J.to_dense())
-        
-        dFdbc = fem.assemble_matrix(self.nonlinear_problem._a)
+        # ∂F/∂m = dFdbc defined in the nonlinear problem as a fem.Form
+        dFdbc = fem.assemble_matrix(dFdbc_form)
         dFdbc.finalize()
 
-        print("dFdbc", dFdbc.to_dense().shape, dFdbc.to_dense())
-
-        V = self.u.function_space
+        # Solve for ∂u/∂m = J⁻¹ ∂F/∂m with a sparse linear solver
         shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
-
-        sparse_J = sps.csr_matrix((self.J.data, self.J.indices, self.J.indptr), shape=shape)
-        
+        sparse_J = sps.csr_matrix((J.data, J.indices, J.indptr), shape=shape)
         dudm = sps.linalg.spsolve(sparse_J, -dFdbc.to_dense())
 
-        print("dudbc", dudm.shape, dudm)
+        self.operator = dudm
 
-        self.tlm = dudm.T
-
-        adjoint_successor = self.successor.get_adjoint_value()
-
-        adjoint = fem.assemble_vector(fem.form(adjoint_successor))
-        adjoint_predecessor = adjoint.array[:] @ dudm
-
-        self.predecessor.set_adjoint_value(adjoint_predecessor)
-
-        return dudm.T
+        return self.input_value @ dudm
     
     def calculate_adjoint(self):
 
-        adjoint_successor = self.successor.get_adjoint_value()
+        # Extract variables from contextvariable ctx
+        F, u, bcs, dFdbc_form = self.ctx
 
-        adjoint = fem.assemble_vector(fem.form(adjoint_successor))
+        # Construct the Jacobian J = ∂F/∂u
+        V = u.function_space
+        du = ufl.TrialFunction(V)
+        J = ufl.derivative(F, u, du)
+        J = fem.assemble_matrix(fem.form(J), bcs = bcs)
+        J.finalize()
 
-        if not self.J == None:
-            V = self.u.function_space
-            du = ufl.TrialFunction(V)
-            self.J = ufl.derivative(self.F, self.u, du)
-
-        self.J = fem.assemble_matrix(fem.form(self.J), bcs = self.bcs)
-        self.J.finalize()
-
-        V = self.u.function_space
         shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
+        sparse_J = sps.csr_matrix((J.data, J.indices, J.indptr), shape=shape)
+        adjoint_solution = sps.linalg.spsolve(sparse_J.T, -self.input_value)
 
-        sparse_J = sps.csr_matrix((self.J.data, self.J.indices, self.J.indptr), shape=shape)
-    
-        adjoint_value = sps.linalg.spsolve(sparse_J.T, -adjoint.array[:])
-        
-        dFdbc = fem.assemble_matrix(self.nonlinear_problem._a)
+        # ∂F/∂m = dFdbc defined in the nonlinear problem as a fem.Form
+        dFdbc = fem.assemble_matrix(dFdbc_form)
         dFdbc.finalize()
 
-        predeccessor_adjoint_value = adjoint_value.T @ dFdbc.to_dense()
-
-        self.predecessor.set_adjoint_value(predeccessor_adjoint_value)
-        return predeccessor_adjoint_value
+        return adjoint_solution.T @ dFdbc.to_dense()
+    

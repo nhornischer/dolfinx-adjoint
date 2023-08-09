@@ -4,56 +4,8 @@ The graph is constructed using the networkx library and is a directed graph.
 """
 
 import networkx as nx
-
-class Node: 
-    def __init__(self, object, **kwargs):
-        self.id = id(object)
-        self.object = object
-        if "name" in kwargs:
-            self.name = kwargs["name"]
-        else:
-            self.name = str(self.object.__module__ + "."+ self.object.__class__.__name__)
-
-    def set_adjoint_value(self, value):
-        "Remember to set this value for the first node in the path"
-        self.adjoint_value = value
-
-    def get_adjoint_value(self):
-        return self.adjoint_value
-    
-class Edge:
-    def __init__(self, predecessor : Node, successor : Node):
-        self.predecessor = predecessor
-        self.successor = successor
-    
-    def calculate_tlm(self):
-        """
-        This method calculates the default tangent linear model (TLM) for
-        the edge, which corresponds to the derivative
-            ∂successor/∂predecessor = 1.0
-        
-        This operator is stored in the edge and applied to the adjoint value
-        stored in the successor node. The adjoint value of the predeccessor
-        node is then calculated as follows:
-            adjoint(predecessor) += adjoint(successor) * ∂successor/∂predecessor
-        """
-
-        self.tlm = 1.0
-        self.predecessor.set_adjoint_value(self.successor.get_adjoint_value() * self.tlm)
-
-    def calculate_adjoint(self):
-        """
-        This method calculates the default adjoint for the edge, which corresponds
-        to the derivative
-            ∂predecessor/∂successor = 1.0
-            
-        This operator is stored in the edge and applied to the adjoint value
-        stored in the successor node. The adjoint value of the predecessor
-        node is then calculated as follows:
-            adjoint(predecessor) += adjoint(successor) * ∂predecessor/∂successor
-        """
-        self.adjoint = 1.0
-        self.predecessor.set_adjoint_value(self.successor.get_adjoint_value() * self.adjoint)
+from .node import Node, AbstractNode
+from .edge import Edge
 
 class Graph:
     def __init__(self):
@@ -82,6 +34,10 @@ class Graph:
         nx_graph = nx.DiGraph()
         for node in self.nodes:
             nx_graph.add_node(node.id, name = node.name)
+            if type(node) == AbstractNode:
+                nx_graph.nodes[node.id]["color"] = 'pink'
+            else:
+                nx_graph.nodes[node.id]["color"] = 'lightblue'
 
         for edge in self.edges:
             if not edge.__class__.__name__ == "Edge":
@@ -98,16 +54,19 @@ class Graph:
     def visualise(self, filename = "graph.pdf"):
         """Visualise the graph"""
         import matplotlib.pyplot as plt
+        # plt.figure(figsize=(10,8))
         plt.figure()
         nx_graph = self.to_networkx()
         labels = nx.get_node_attributes(nx_graph, "name")
         edge_labels = nx.get_edge_attributes(nx_graph, "tag")
         edge_colors = nx.get_edge_attributes(nx_graph, "color")
-        nx.draw_shell(nx_graph, labels=labels, edge_color = edge_colors.values(), with_labels=True)
+        node_colors = nx.get_node_attributes(nx_graph, "color")
+        nx.draw_shell(nx_graph, labels=labels,node_color = node_colors.values(),  edge_color = edge_colors.values(), with_labels=True)
         nx.draw_networkx_edge_labels(nx_graph, pos=nx.shell_layout(nx_graph), edge_labels=edge_labels)
         plt.savefig(filename)
 
     def compute_tlm(self, function_id, variable_id):
+        self.reset_adjoint_values()
         # Set the adjoint value of the function to 1.0
         self.get_node(function_id).set_adjoint_value(1.0)
         # Get the paths from the function to the variable
@@ -118,14 +77,30 @@ class Graph:
         
         return self.get_node(variable_id).get_adjoint_value()
     
+    def backprop(self, function_id, variable_id):
+        self.reset_adjoint_values()
+        function_node = self.get_node(function_id)
+        grad_func = function_node.get_gradFuncs()[0]
+        grad_func(1.0)
+        return self.get_node(variable_id).get_adjoint_value()
+
+
     def compute_adjoint(self, function_id, variable_id):
+        self.reset_adjoint_values()
         # Set the adjoint value of the function to 1.0
         self.get_node(function_id).set_adjoint_value(1.0)
         # Get the paths from the function to the variable
         paths = self.get_backpropagation_path(variable_id, function_id)
+        calculated_edges = []
         for path in paths:
             for edge in path:
+                if edge in calculated_edges:
+                    continue
+                edge.set_derivative_path()
+                print(f"Calculating {edge.__class__.__name__} from {edge.successor.name} to {edge.predecessor.name}")
                 edge.calculate_adjoint()
+                calculated_edges.append(edge)
+                print(type(self.get_node(edge.predecessor.id).get_adjoint_value()))
         
         return self.get_node(variable_id).get_adjoint_value()
 
@@ -141,3 +116,7 @@ class Graph:
                 edge_path.append(edge)
             edge_paths.append(edge_path)
         return edge_paths
+    
+    def reset_adjoint_values(self):
+        for node in self.nodes:
+            node.reset_adjoint_value()

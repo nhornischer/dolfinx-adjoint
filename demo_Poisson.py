@@ -40,10 +40,23 @@ domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, mesh.CellType.triangle)
 V = fem.FunctionSpace(domain, ("CG", 1))                
 W = fem.FunctionSpace(domain, ("DG", 0))
 
+# Define the basis functions and parameters
+uh = fem.Function(V, name="uₕ", graph=graph_)                             
+v = ufl.TestFunction(V)
+f = fem.Function(W, name="f", graph=graph_)                               
+nu = fem.Constant(domain, ScalarType(1.0), name = "ν", graph = graph_)      
+            
+f.interpolate(lambda x: x[0] + x[1])
+
+# Define the variational form and the residual equation
+a = nu * ufl.inner(ufl.grad(uh), ufl.grad(v)) * ufl.dx
+L = f * v * ufl.dx
+F = a - L
+
 # Define the boundary and the boundary conditions
 domain.topology.create_connectivity(domain.topology.dim -1, domain.topology.dim)
 boundary_facets = mesh.exterior_facet_indices(domain.topology)
-uD_L = fem.Function(V, name="u_D", graph=graph_)                          
+uD_L = fem.Function(V, name="u_D", graph = graph_)                          
 uD_L.interpolate(lambda x: 1.0 + 0.0 * x[0])   
 uD_R = fem.Function(V, name="u_D")
 uD_R.interpolate(lambda x: 1.0 + 0.0 * x[0])         
@@ -60,52 +73,22 @@ boundary_dofs_B = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[1], 0.0)
 bc_L = fem.dirichletbc(uD_L, boundary_dofs_L, graph = graph_)     
 bc_R = fem.dirichletbc(uD_R, boundary_dofs_R)   
 bc_T = fem.dirichletbc(uD_T, boundary_dofs_T)
-bc_B = fem.dirichletbc(uD_B, boundary_dofs_B)             
-
-# Define the basis functions and parameters
-uh = fem.Function(V, name="uₕ", graph = graph_)                             
-v = ufl.TestFunction(V)
-f = fem.Function(W, name="f", graph = graph_)                               
-nu = fem.Constant(domain, ScalarType(1.0), graph = graph_, name = "ν")      
-            
-f.interpolate(lambda x: x[0] + x[1])
-
-# Define the variational form and the residual equation
-a = nu * ufl.inner(ufl.grad(uh), ufl.grad(v)) * ufl.dx
-L = f * v * ufl.dx
-F = a - L
-
+bc_B = fem.dirichletbc(uD_B, boundary_dofs_B)  
 # Define the problem solver and solve it
 problem = fem.petsc.NonlinearProblem(F, uh, bcs=[bc_L, bc_R, bc_T, bc_B], graph = graph_)             
 solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)          
 solver.solve(uh)                                                  
 # Define profile g
-g = fem.Function(W, name="g")                                   
+g = fem.Function(W, name="g", graph = graph_)                                   
 g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))   
 # Define the objective function
 alpha = fem.Constant(domain, ScalarType(1e-6), name = "α")      
-J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx
+J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + alpha * ufl.inner(f, f) * ufl.dx
 J = fem.assemble_scalar(fem.form(J_form, graph = graph_), graph = graph_)                       
 print("J(u) = ", J)
 
-test = graph_.compute_adjoint(id(J), id(uD_L))
-
-test_function= dolfinx.fem.Function(V, name="test")
-test_function.vector.setArray(test)
-
-with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_bc.xdmf", "w") as file:
-    file.write_mesh(domain)
-    file.write_function(test_function)
-
-test = graph_.compute_adjoint(id(J), id(f))
-
-test_function= dolfinx.fem.Function(W, name="test")
-test_function.vector.setArray(test)
-
-with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "demo_Poisson_f.xdmf", "w") as file:
-    file.write_mesh(domain)
-    file.write_function(test_function)
-graph_.visualise("graph.pdf")
+print(graph_.backprop(id(J), id(f)))
+graph_.visualise()
 
 import unittest
 
@@ -152,7 +135,7 @@ class TestPoisson(unittest.TestCase):
         gradient_df= fem.Function(W, name="dJdf")
         gradient_df.vector.setArray(gradient)
 
-        self.assertTrue(np.allclose(graph_.compute_adjoint(id(J), id(f)), gradient_df.vector.array[:]))
+        self.assertTrue(np.allclose(graph_.backprop(id(J), id(f)), gradient_df.vector.array[:]))
 
     def test_Poisson_dJdnu(self):
         """
@@ -198,7 +181,7 @@ class TestPoisson(unittest.TestCase):
 
         gradient = adjoint_solution.transpose() @ dFdnu + dJdnu
 
-        self.assertTrue(np.allclose(graph_.compute_adjoint(id(J), id(nu)), gradient))
+        self.assertTrue(np.allclose(graph_.backprop(id(J), id(nu)), gradient))
  
     def test_Poisson_dJdbc(self):
         """
@@ -255,5 +238,5 @@ class TestPoisson(unittest.TestCase):
         gradient_bc = fem.Function(V, name="dJdbc")
         gradient_bc.vector.setArray(gradient)
 
-        self.assertTrue(np.allclose(graph_.compute_adjoint(id(J), id(uD_L)), gradient_bc.vector.array[:]))
+        self.assertTrue(np.allclose(graph_.backprop(id(J), id(uD_L)), gradient_bc.vector.array[:]))
 

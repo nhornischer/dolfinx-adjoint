@@ -11,3 +11,6 @@ for i,module in enumerate(list(sys.modules.keys())):
 from .  import graph
 from . import fem
 from . import nls
+from .edge import *
+from .node import *
+from .graph import *

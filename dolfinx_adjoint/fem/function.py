@@ -15,7 +15,6 @@ class Function(fem.Function):
 
             function_node = graph.Node(self, name=self.name)
             _graph.add_node(function_node)
-
     
 class Constant(fem.Constant):
     def __init__(self, *args, **kwargs):
