@@ -40,7 +40,10 @@ class Node(AbstractNode):
         self.grad = None
 
     def accumulate_grad(self, value):
+        import numpy as np
         if self.grad is None:
+            print(f"Accumulating gradient: {np.shape(value)}")
             self.grad = value
         else:
+            print(f"Accumulating gradient: {np.shape(self.grad)} + {np.shape(value)}")
             self.grad += value

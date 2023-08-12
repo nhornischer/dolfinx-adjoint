@@ -1,6 +1,7 @@
 from dolfinx import fem
 import ufl
 import scipy.sparse as sps
+import numpy as np
 
 import dolfinx_adjoint.graph as graph
 
@@ -162,7 +163,7 @@ class NonlinearProblem_Boundary_Edge(graph.Edge):
     def calculate_tlm(self):
 
         # Extract variables from contextvariable ctx
-        F, u, bcs, dFdbc_form = self.ctx
+        F, u, bcs, dFdbc_form, bc = self.ctx
             
         # Construct the Jacobian J = ∂F/∂u
         V = u.function_space

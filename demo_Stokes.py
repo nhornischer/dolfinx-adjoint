@@ -37,9 +37,16 @@ import scipy.sparse as sps
 import gmsh
 
 from mpi4py import MPI
-from dolfinx import mesh, fem, io, nls
+from dolfinx import fem, io, nls
 from dolfinx_adjoint import *
 import ufl
+
+# We first need to create a graph object to store the computational graph. 
+# This is done explicitly to maintain the guideline of FEniCSx.
+# Every function that is created with a graph object will be added to the graph
+# and its gradient will be computed automatically. 
+
+graph_ = graph.Graph()
 
 # Mesh parameters
 gmsh.initialize()
@@ -111,10 +118,10 @@ p_elem = ufl.FiniteElement("CG", mesh.ufl_cell(), 1)
 
 v_elem = ufl.MixedElement([u_elem, p_elem])
 V = fem.FunctionSpace(mesh, v_elem)
-V_u, _ = V.sub(0).collapse()
-V_p, _ = V.sub(1).collapse()
+V_u, V_u_map = V.sub(0).collapse()
+V_p, V_p_map = V.sub(1).collapse()
 
-up = fem.Function(V, name="up")
+up = fem.Function(V, name="up", graph=graph_)
 (u, p) = ufl.split(up)
 
 vq = ufl.TestFunction(V)
@@ -123,7 +130,7 @@ vq = ufl.TestFunction(V)
 # Boundary conditions   
 f = fem.Function(V_u, name="f")             # Inflow Dirichlet boundary condition
 f.interpolate(lambda x: np.stack((x[1]*(10-x[1])/25, 0.0* x[0])))
-g = fem.Function(V_u, name="g")             # Circle Dirichlet boundary condition
+g = fem.Function(V_u, name="g", graph = graph_)             # Circle Dirichlet boundary condition
 noslip = fem.Function(V_u, name="noslip")        # No-slip homogenous Dirichlet boundary condition at the walls for the velocity
 outflow = fem.Function(V_p, name="outflow")       # Outflow homogeneous Dirichlet boundary condition for the pressure
 
@@ -132,7 +139,10 @@ dofs_inflow = fem.locate_dofs_topological((V.sub(0), V_u), 1, ft.indices[ft.valu
 dofs_outflow = fem.locate_dofs_topological((V.sub(1), V_p), 1, ft.indices[ft.values == outlet_marker])
 dofs_obstacle = fem.locate_dofs_topological((V.sub(0), V_u), 1, ft.indices[ft.values == obstacle_marker])
 
-bcs = [fem.dirichletbc(f, dofs_inflow, V.sub(0)), fem.dirichletbc(g, dofs_obstacle, V.sub(0)), fem.dirichletbc(noslip, dofs_walls, V.sub(0)), fem.dirichletbc(outflow, dofs_outflow, V.sub(1))]
+bcs = [fem.dirichletbc(f, dofs_inflow, V.sub(0)),
+        fem.dirichletbc(g, dofs_obstacle, V.sub(0), graph=graph_, map = V_u_map),
+          fem.dirichletbc(noslip, dofs_walls, V.sub(0)),
+            fem.dirichletbc(outflow, dofs_outflow, V.sub(1))]
 
 # Variational formulation
 F = nu * ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx\
@@ -140,24 +150,93 @@ F = nu * ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx\
     - q * ufl.div(u) * ufl.dx
 
 # Define the problem solver
-problem = fem.petsc.NonlinearProblem(F, up, bcs=bcs)
+problem = fem.petsc.NonlinearProblem(F, up, bcs=bcs, graph=graph_)
 solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)
 
-solver.solve(up)
+solver.solve(up)    
 
 # Define the objective function
 dObs = ufl.Measure("ds", domain=mesh, subdomain_data=ft, subdomain_id=obstacle_marker)
 J_form  = 0.5 * ufl.inner(ufl.grad(u), ufl.grad(u)) * ufl.dx + alpha / 2 * ufl.inner(g, g) * dObs
 
-J = fem.assemble_scalar(fem.form(J_form))
+J = fem.assemble_scalar(fem.form(J_form, graph=graph_), graph=graph_)
 
 print("J(u, p) = ", J)
+graph_.visualise()
 
-visualise()
-compute_gradient(J, u)
+grad = graph_.backprop(id(J), id(g))
+
+# Visualise the solution
+grad_func = fem.Function(V_u, name="grad")
+grad_func.vector.setArray(grad)
+u, p = up.split()
+u.name = "Velocity"
+p.name = "Pressure"
+with io.XDMFFile(MPI.COMM_WORLD, "stokes.xdmf", "w") as xdmf:
+    xdmf.write_mesh(mesh)
+    xdmf.write_function(u)
+    xdmf.write_function(p)
+    xdmf.write_function(grad_func)
 
 import unittest
 
 class TestStokes(unittest.TestCase):
-    def setUp(self):
-        self.dJdu = fem.assemble_vector(fem.form(ufl.derivative(J, u, u_)))
+    def test_Poisson_dJdg(self):
+        """
+        In this test we calculate the derivative of the objective function
+        with respect to the Dirichlet boundary condition g.
+        
+            dJ(u,p,g)/dg = ∂J/∂up ∂up/∂g + ∂J/∂g
+
+        We can easily calculate the derivative of 
+        ∂J/∂up and ∂J/∂g by using the symbolic differentiation of UFL.
+        
+        Since u is defined on a mixed element space we need to take care of
+        the function spaces while calculating the derivative.
+
+        In addition we know that 0 = F(u, p) and thus by deriving for g and using
+        the combined ansatz space with up ∈ V we get
+            0 = ∂F/∂up ∂up/∂g + ∂F/∂g
+        However in this setting the Function spaces do not match anymore since g is
+        defined on V_u and up on V = V_u x V_p.
+
+        Thus we need to map the derivative ∂F/∂g from V_u to V.
+        
+        Putting it all together results in the adjoint approach
+        of first calculating
+            (∂F/∂up)ᵀ λ = - (∂J/∂up)ᵀ
+        and then inserting it into
+            dJdg = λᵀ ∂F/∂g + ∂J/∂g
+        
+        To get only the gradient values on the boundary we multiply the gradient
+        with an identity matrix that is nonzero everywhere except on the boundary.
+
+        The resulting function is still an element of the mixed element space,
+        thus we need to map it back to the function space of g.
+        """
+        argument = ufl.TrialFunction(V)
+        dJdu = ufl.derivative(J_form, up, argument) 
+
+        dJdg = ufl.derivative(J_form, g)
+
+        argument = ufl.TrialFunction(V)
+        dFdu = ufl.derivative(F, up, argument)
+
+        dJdu = fem.assemble_vector(fem.form(dJdu)).array
+        dJdg = fem.assemble_vector(fem.form(dJdg)).array
+
+        dFdg = fem.assemble_matrix(problem._a).to_dense()
+        dFdu = fem.assemble_matrix(fem.form(dFdu), bcs = bcs).to_dense()
+
+        adjoint_solution = np.linalg.solve(dFdu.transpose(), -dJdu.transpose())
+
+        gradient =  adjoint_solution.transpose() @ dFdg 
+
+        matrix = np.zeros((len(gradient), len(gradient)))
+        for index in dofs_obstacle[0]:
+            matrix[index, index] = 1.0
+
+        gradient = (matrix @ gradient)[V_u_map] + dJdg
+
+        self.assertTrue(np.allclose(gradient, graph_.backprop(id(J), id(g))))
+

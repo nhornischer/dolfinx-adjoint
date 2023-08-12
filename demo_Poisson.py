@@ -32,6 +32,8 @@ import ufl
 
 # We first need to create a graph object to store the computational graph. 
 # This is done explicitly to maintain the guideline of FEniCSx.
+# Every function that is created with a graph object will be added to the graph
+# and its gradient will be computed automatically. 
 
 graph_ = graph.Graph()
 
@@ -190,7 +192,7 @@ class TestPoisson(unittest.TestCase):
             dJ/du_D = ∂J/∂u * du/du_D + ∂J/∂u_D                         (3.1)
 
         The first term ∂J/∂u is easy to compute and for the second term we use the adjoint problem similar to (1.2)
-            dF/du = ∂F/∂u * du/du_D + ∂F/∂u_D = 0
+            dF/du_D = ∂F/∂u * du/du_D + ∂F/∂u_D = 0
             => du/du_D = -(∂F/∂u)^-1 * ∂F/∂u_D                          (3.2)
         
         Inserting (3.2) into (3.1) yields
