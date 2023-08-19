@@ -1,7 +1,9 @@
-from dolfinx import fem
+from dolfinx import fem, io
 import ufl
 import scipy.sparse as sps
 import numpy as np
+from mpi4py import MPI
+import petsc4py as PETSc
 
 import dolfinx_adjoint.graph as graph
 
@@ -48,7 +50,6 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
                         u_node.append_gradFuncs(bc_edge)
                         bc_edge.set_next_functions(bc_node.get_gradFuncs())
 
-
 class NonlinearProblem_Coefficient_Edge(graph.Edge):
     def calculate_tlm(self):
         # Extract variables from contextvariable ctx
@@ -64,6 +65,7 @@ class NonlinearProblem_Coefficient_Edge(graph.Edge):
         # Calculate ∂F/∂m
         dFdm = ufl.derivative(F, m)
         dFdm = fem.assemble_matrix(fem.form(dFdm))
+        dFdm = apply_homogenized_boundary(dFdm, bcs)
 
         # Solve for ∂u/∂m = J⁻¹ ∂F/∂m with a sparse linear solver
         shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
@@ -81,21 +83,18 @@ class NonlinearProblem_Coefficient_Edge(graph.Edge):
         # Construct the Jacobian J = ∂F/∂u
         V = u.function_space
         du = ufl.TrialFunction(V)
-        J = ufl.derivative(F, u, du)
-        J = fem.assemble_matrix(fem.form(J), bcs = bcs)
-        J.finalize()
+        J = fem.petsc.assemble_matrix(fem.form(ufl.derivative(F, u, du)), bcs = bcs)
+        J.assemble()
 
         # Solve (J⁻¹)ᵀ λ = -x where x is the input with a sparse linear solver
-        shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
-        sparse_J = sps.csr_matrix((J.data, J.indices, J.indptr), shape=shape)
-        adjoint_solution = sps.linalg.spsolve(sparse_J.T, -self.input_value)
+        adjoint_solution = AdjointProblemSolver(J.transpose(), -self.input_value, fem.Function(V), bcs = bcs)
 
         # Calculate ∂F/∂m
-        dFdm = ufl.derivative(F, m)
-        dFdm = fem.assemble_matrix(fem.form(dFdm))
-
+        dFdm = fem.petsc.assemble_matrix(fem.form(ufl.derivative(F, m)))
+        dFdm.assemble()
+        
         # Calculate λᵀ * ∂F/∂m
-        return adjoint_solution.T @ dFdm.to_dense()
+        return dFdm.transpose() * adjoint_solution.vector
     
 class NonlinearProblem_Constant_Edge(graph.Edge):
     def calculate_tlm(self):
@@ -113,17 +112,18 @@ class NonlinearProblem_Constant_Edge(graph.Edge):
         # Create a function based on the constant in order to use ufl.derivative to
         # calculate ∂F/∂m
         domain = m.domain
-        DG0 = fem.FunctionSpace(domain, "DG", 0)
-        function = fem.Function(DG0)
+        DG0 = fem.FunctionSpace(domain, ("DG", 0))
+        function = fem.Function(DG0, name = "constant")
         function.vector.array[:] = m.c
         replaced_form = ufl.replace(F, {m: function})
         dFdm = ufl.derivative(replaced_form, function)
-        dFdm = fem.assemble_vector(fem.form(dFdm))
+        dFdm = fem.assemble_vector(fem.form(dFdm)).array[:]
+        dFdm = apply_homogenized_boundary(dFdm, bcs)
 
         # Solve for ∂u/∂m = J⁻¹ ∂F/∂m with a sparse linear solver
         shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
         sparse_J = sps.csr_matrix((J.data, J.indices, J.indptr), shape=shape)
-        dudm = sps.linalg.spsolve(sparse_J, -dFdm.array[:])
+        dudm = sps.linalg.spsolve(sparse_J, -dFdm)
 
         self.operator = dudm
 
@@ -137,14 +137,11 @@ class NonlinearProblem_Constant_Edge(graph.Edge):
         # Construct the Jacobian J = ∂F/∂u
         V = u.function_space
         du = ufl.TrialFunction(V)
-        J = ufl.derivative(F, u, du)
-        J = fem.assemble_matrix(fem.form(J), bcs = bcs)
-        J.finalize()
+        J = fem.petsc.assemble_matrix(fem.form(ufl.derivative(F, u, du)), bcs = bcs)
+        J.assemble()
 
         # Solve (J⁻¹)ᵀ λ = -x where x is the input with a sparse linear solver
-        shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
-        sparse_J = sps.csr_matrix((J.data, J.indices, J.indptr), shape=shape)
-        adjoint_solution = sps.linalg.spsolve(sparse_J.T, -self.input_value)
+        adjoint_solution = AdjointProblemSolver(J.transpose(), -self.input_value, fem.Function(V), bcs = bcs)
 
         # Create a function based on the constant in order to use ufl.derivative
         # to calculate ∂F/∂m
@@ -153,17 +150,17 @@ class NonlinearProblem_Constant_Edge(graph.Edge):
         function = fem.Function(DG0)
         function.vector.array[:] = m.c
         replaced_form = ufl.replace(F, {m: function})
-        dFdm = ufl.derivative(replaced_form, function)
-        dFdm = fem.assemble_vector(fem.form(dFdm))
+        dFdm = fem.petsc.assemble_vector(fem.form(ufl.derivative(replaced_form, function)))
+        dFdm.assemble()
 
         # Calculate λᵀ * ∂F/∂m
-        return  adjoint_solution.T @ dFdm.array[:]
+        return  adjoint_solution.vector.dot(dFdm)
     
 class NonlinearProblem_Boundary_Edge(graph.Edge):
     def calculate_tlm(self):
 
         # Extract variables from contextvariable ctx
-        F, u, bcs, dFdbc_form, bc = self.ctx
+        F, u, bcs, dFdbc_form = self.ctx
             
         # Construct the Jacobian J = ∂F/∂u
         V = u.function_space
@@ -175,6 +172,7 @@ class NonlinearProblem_Boundary_Edge(graph.Edge):
         # ∂F/∂m = dFdbc defined in the nonlinear problem as a fem.Form
         dFdbc = fem.assemble_matrix(dFdbc_form)
         dFdbc.finalize()
+        dFdbc = apply_homogenized_boundary(dFdbc.to_dense(), bcs)
 
         # Solve for ∂u/∂m = J⁻¹ ∂F/∂m with a sparse linear solver
         shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
@@ -194,16 +192,37 @@ class NonlinearProblem_Boundary_Edge(graph.Edge):
         V = u.function_space
         du = ufl.TrialFunction(V)
         J = ufl.derivative(F, u, du)
-        J = fem.assemble_matrix(fem.form(J), bcs = bcs)
-        J.finalize()
+        J = fem.petsc.assemble_matrix(fem.form(ufl.derivative(F, u, du)), bcs = bcs)
+        J.assemble()
 
-        shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
-        sparse_J = sps.csr_matrix((J.data, J.indices, J.indptr), shape=shape)
-        adjoint_solution = sps.linalg.spsolve(sparse_J.T, -self.input_value)
+        # Solve (J⁻¹)ᵀ λ = -x where x is the input with a sparse linear solver
+        adjoint_solution = AdjointProblemSolver(J.transpose(), -self.input_value, fem.Function(V), bcs = bcs)
 
         # ∂F/∂m = dFdbc defined in the nonlinear problem as a fem.Form
-        dFdbc = fem.assemble_matrix(dFdbc_form)
-        dFdbc.finalize()
+        dFdbc = fem.petsc.assemble_matrix(dFdbc_form)
+        dFdbc.assemble()
 
-        return adjoint_solution.T @ dFdbc.to_dense()
-    
+        return dFdbc.transpose() * adjoint_solution.vector
+
+
+def apply_homogenized_boundary(value, bcs):
+    for bc in bcs:
+        for dofs in bc.dof_indices()[0]:
+            value[int(dofs)] = 0.0
+    return value
+
+def AdjointProblemSolver(A, b, x : fem.Function, bcs = None):
+    from dolfinx import cpp as _cpp
+    from petsc4py import PETSc
+    _x = _cpp.la.petsc.create_vector_wrap(x.x)
+    _solver = PETSc.KSP().create(x.function_space.mesh.comm)
+    _solver.setOperators(A)
+
+    _b = PETSc.Vec().createWithArray(b)
+    _b.array_w = apply_homogenized_boundary(_b.array_w, bcs)
+
+    _solver.solve(_b, _x)
+    return x
+
+
+

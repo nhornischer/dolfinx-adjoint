@@ -72,12 +72,12 @@ boundary_dofs_R = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[0], 1.0)
 boundary_dofs_T = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[1], 1.0))
 boundary_dofs_B = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[1], 0.0))
 
-bc_L = fem.dirichletbc(uD_L, boundary_dofs_L, graph = graph_)     
-bc_R = fem.dirichletbc(uD_R, boundary_dofs_R)   
-bc_T = fem.dirichletbc(uD_T, boundary_dofs_T)
-bc_B = fem.dirichletbc(uD_B, boundary_dofs_B)  
+bcs = [fem.dirichletbc(uD_L, boundary_dofs_L, graph = graph_),
+       fem.dirichletbc(uD_R, boundary_dofs_R),
+       fem.dirichletbc(uD_T, boundary_dofs_T),
+       fem.dirichletbc(uD_B, boundary_dofs_B)]
 # Define the problem solver and solve it
-problem = fem.petsc.NonlinearProblem(F, uh, bcs=[bc_L, bc_R, bc_T, bc_B], graph = graph_)             
+problem = fem.petsc.NonlinearProblem(F, uh, bcs=bcs, graph = graph_)             
 solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)          
 solver.solve(uh)                                                  
 # Define profile g
@@ -87,10 +87,29 @@ g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi
 alpha = fem.Constant(domain, ScalarType(1e-6), name = "α")      
 J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + alpha * ufl.inner(f, f) * ufl.dx
 J = fem.assemble_scalar(fem.form(J_form, graph = graph_), graph = graph_)                       
-print("J(u) = ", J)
 
-print(graph_.backprop(id(J), id(f)))
 graph_.visualise()
+dJdf = graph_.backprop(id(J), id(f))
+dJdnu = graph_.backprop(id(J), id(nu))
+dJdbc = graph_.backprop(id(J), id(uD_L))
+
+print("J(u) = ", J)
+print("||dJ/df||_L2 = ", np.sqrt(np.dot(dJdf, dJdf)))
+print("||dJ/dbc||_L2 = ", np.sqrt(np.dot(dJdbc, dJdbc)))
+print("dJdnu = ", dJdnu)
+
+# Visualise the results by saving them to a file as functions
+dJdf_func = fem.Function(W, name="dJdf")
+dJdf_func.vector.setArray(dJdf)
+dJdbc_func = fem.Function(V, name="dJdbc")
+dJdbc_func.vector.setArray(dJdbc)
+with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "poisson_results.xdmf", "w") as xdmf:
+    xdmf.write_mesh(domain)
+    xdmf.write_function(uh)
+    xdmf.write_function(f)
+    xdmf.write_function(g)
+    xdmf.write_function(dJdf_func)
+    xdmf.write_function(dJdbc_func)
 
 import unittest
 
@@ -125,10 +144,15 @@ class TestPoisson(unittest.TestCase):
 
         dJdf = ufl.derivative(J_form, f)
 
-        dFdu = fem.assemble_matrix(fem.form(dFdu), bcs=[bc_L, bc_R, bc_T, bc_B]).to_dense()
+        dFdu = fem.assemble_matrix(fem.form(dFdu), bcs=bcs).to_dense()
         dJdu = fem.assemble_vector(fem.form(dJdu)).array
         dFdf = fem.assemble_matrix(fem.form(dFdf)).to_dense()
         dJdf = fem.assemble_vector(fem.form(dJdf)).array
+
+        # We now need to apply the boundary conditions to the rhs of the adjoint problem
+        for bc in bcs:
+            for dofs in bc.dof_indices()[0]:
+                dJdu[int(dofs)] = 0
 
         adjoint_solution = np.linalg.solve(dFdu.transpose(), - dJdu.transpose())
         
@@ -177,7 +201,12 @@ class TestPoisson(unittest.TestCase):
         dJdu = fem.assemble_vector(fem.form(dJdu)).array
         dJdnu = fem.assemble_scalar(fem.form(dJdnu))
         dFdnu = fem.assemble_vector(fem.form(dFdnu)).array
-        dFdu = fem.assemble_matrix(fem.form(dFdu), bcs=[bc_L, bc_R, bc_T, bc_B]).to_dense()
+        dFdu = fem.assemble_matrix(fem.form(dFdu), bcs=bcs).to_dense()
+
+        # We now need to apply the boundary conditions to the rhs of the adjoint problem
+        for bc in bcs:
+            for dofs in bc.dof_indices()[0]:
+                dJdu[int(dofs)] = 0
         
         adjoint_solution = np.linalg.solve(dFdu.transpose(), - dJdu.transpose())
 
@@ -223,9 +252,14 @@ class TestPoisson(unittest.TestCase):
         dFdu = ufl.derivative(F, uh)
         dJdu = ufl.derivative(J_form, uh)
 
-        dFdu = fem.assemble_matrix(fem.form(dFdu), bcs=[bc_L, bc_R, bc_T, bc_B]).to_dense()
+        dFdu = fem.assemble_matrix(fem.form(dFdu), bcs=bcs).to_dense()
         dJdu = fem.assemble_vector(fem.form(dJdu)).array
         dFdbc = fem.assemble_matrix(problem._a).to_dense()
+
+        # We now need to apply the boundary conditions to the rhs of the adjoint problem
+        for bc in bcs:
+            for dofs in bc.dof_indices()[0]:
+                dJdu[int(dofs)] = 0
 
         adjoint_solution = np.linalg.solve(dFdu.transpose(), - dJdu.transpose())
         

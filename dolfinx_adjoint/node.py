@@ -16,6 +16,9 @@ class AbstractNode:
         else:
             self.gradFuncs.append(_list)
 
+    def remove_gradFunc(self, gradFunc):
+        self.gradFuncs.remove(gradFunc)
+
     def get_gradFuncs(self):
         return self.gradFuncs
 
@@ -28,6 +31,7 @@ class Node(AbstractNode):
     Since we do not want"""
     def __init__(self, object, **kwargs):
         super().__init__(object, **kwargs)
+        self.version = 0
         self.grad = None
 
     def set_grad(self, value):
@@ -42,8 +46,14 @@ class Node(AbstractNode):
     def accumulate_grad(self, value):
         import numpy as np
         if self.grad is None:
-            print(f"Accumulating gradient: {np.shape(value)}")
+            if type(value) == np.ndarray:
+                print(f"Accumulating gradient: {np.shape(value)}")
+            else:
+                print(f"Accumulating gradient: {value}")
             self.grad = value
         else:
-            print(f"Accumulating gradient: {np.shape(self.grad)} + {np.shape(value)}")
+            if type(value) == np.ndarray:
+                print(f"Accumulating gradient: {np.shape(self.grad)} + {np.shape(value)}")
+            else:
+                print(f"Accumulating gradient: {self.grad} + {value}")
             self.grad += value

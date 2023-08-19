@@ -24,6 +24,15 @@ class Graph:
                 return node
         return None
     
+    def remove_edge(self, edge : Edge):
+        self.edges.remove(edge)
+        for node in self.nodes:
+            if edge in node.get_gradFuncs():
+                node.remove_gradFunc(edge)
+        for edge in self.edges:
+            if edge in edge.next_functions:
+                edge.remove_next_function(edge)
+
     def get_edge(self, predecessor : int, successor : int):
         for edge in self.edges:
             if edge.predecessor.id == predecessor and edge.successor.id == successor:

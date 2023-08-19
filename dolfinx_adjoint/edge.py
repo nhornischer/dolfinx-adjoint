@@ -11,6 +11,9 @@ class Edge:
     def set_next_functions(self, funcList):
         self.next_functions  = funcList
 
+    def remove_next_function(self, func):
+        self.next_functions.remove(func)
+
     def calculate_tlm(self):
         """
         This method calculates the default tangent linear model (TLM) for

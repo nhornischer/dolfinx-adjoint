@@ -2,6 +2,7 @@ from dolfinx import nls
 import dolfinx_adjoint.graph as graph
 
 class NewtonSolver(nls.petsc.NewtonSolver):
+    # SHOULD BE ABLE TO REMOVE THIS
     def __init__(self, *args, **kwargs):
         if not "graph" in kwargs:
             super().__init__(*args, **kwargs)

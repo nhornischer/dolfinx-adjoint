@@ -41,7 +41,7 @@ class Form_Coefficient_Edge(graph.Edge):
 
         self.operator = derivative
 
-        return self.input_value * fem.assemble_vector(fem.form(derivative)).array[:]
+        return fem.petsc.assemble_vector(fem.form(derivative))
     
 class Form_Constant_Edge(graph.Edge):
     def calculate_tlm(self):
