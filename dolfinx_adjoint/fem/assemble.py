@@ -9,7 +9,7 @@ def assemble_scalar(*args, **kwargs):
         _graph = kwargs["graph"]
         del kwargs["graph"]
         output = fem.assemble_scalar(*args, **kwargs)
-        assemble_node = graph.AbstractNode(output, name="assemble_scalar")
+        assemble_node = graph.Node(output, name="assemble_scalar")
         _graph.add_node(assemble_node)
 
         # Get node accociated with the fem.form stored in args[0]

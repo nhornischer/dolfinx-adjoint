@@ -1,7 +1,7 @@
 """
 In this demo we are interested in time-dependent problems namely the heat-equation
 
-    du/dt - ∇u = 0
+    du/dt - Δu = 0
              u = g for Ω × {0}
 
 where Ω is the unit square, u is the temperature and g is the initial temperature.
@@ -100,7 +100,7 @@ xdmf.close()
 
 alpha = fem.Constant(domain, ScalarType(1.0e-7))
 combined = zip(true_states, test_states)
-J_form = sum(ufl.inner(true - test, true - test) * ufl.dx for (true, test) in combined) 
+J_form = sum(ufl.inner(true - test, true - test) * ufl.dx for (true, test) in combined) + alpha * ufl.inner(ufl.grad(initial_guess), ufl.grad(initial_guess)) * ufl.dx
 J = fem.assemble_scalar(fem.form(J_form, graph=graph_), graph=graph_)
 print("J(u) = ", J)
 graph_.remove_edge(graph_.get_edge(id(initial_guess), id(u_next)))

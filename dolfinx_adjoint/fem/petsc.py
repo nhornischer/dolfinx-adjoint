@@ -134,6 +134,12 @@ class NonlinearProblem_Constant_Edge(graph.Edge):
         # Extract variables from contextvariable ctx
         F, u, m, bcs = self.ctx
 
+
+        b = -self.input_value.array[:]
+        for bc in bcs:
+            for dofs in bc.dof_indices()[0]:
+                b[int(dofs)] = 0.0
+
         # Construct the Jacobian J = ∂F/∂u
         V = u.function_space
         du = ufl.TrialFunction(V)
@@ -154,6 +160,7 @@ class NonlinearProblem_Constant_Edge(graph.Edge):
         dFdm.assemble()
 
         # Calculate λᵀ * ∂F/∂m
+        # return x_np.T @ dFdm.array[:]
         return  adjoint_solution.vector.dot(dFdm)
     
 class NonlinearProblem_Boundary_Edge(graph.Edge):
@@ -205,12 +212,6 @@ class NonlinearProblem_Boundary_Edge(graph.Edge):
         return dFdbc.transpose() * adjoint_solution.vector
 
 
-def apply_homogenized_boundary(value, bcs):
-    for bc in bcs:
-        for dofs in bc.dof_indices()[0]:
-            value[int(dofs)] = 0.0
-    return value
-
 def AdjointProblemSolver(A, b, x : fem.Function, bcs = None):
     from dolfinx import cpp as _cpp
     from petsc4py import PETSc
@@ -218,9 +219,24 @@ def AdjointProblemSolver(A, b, x : fem.Function, bcs = None):
     _solver = PETSc.KSP().create(x.function_space.mesh.comm)
     _solver.setOperators(A)
 
-    _b = PETSc.Vec().createWithArray(b)
-    _b.array_w = apply_homogenized_boundary(_b.array_w, bcs)
 
+    _b = PETSc.Vec().createWithArray(b)
+    if bcs is not None:
+        new_array = _b.array_w.copy()
+        for bc in bcs:
+            for dofs in bc.dof_indices()[0]:
+                new_array[int(dofs)] = 0.0
+        _b.array_w = new_array
+
+
+    _solver.setType("preonly")
+    _solver.getPC().setType("lu")
+    _solver.getPC().setFactorSolverType("mumps")
+    opts = PETSc.Options()
+    opts["mat_mumps_icntl_24"] = 1  # Option to support solving a singular matrix (pressure nullspace)
+    opts["mat_mumps_icntl_25"] = 0  # Option to support solving a singular matrix (pressure nullspace)
+    opts["ksp_error_if_not_converged"] = 1
+    _solver.setFromOptions()
     _solver.solve(_b, _x)
     return x
 

@@ -113,9 +113,6 @@ if mesh_comm.rank == model_rank:
     gmsh.model.occ.synchronize()
 
     gmsh.option.setNumber("Mesh.Algorithm", 8)
-    # gmsh.option.setNumber("Mesh.RecombinationAlgorithm", 2)
-    # gmsh.option.setNumber("Mesh.RecombineAll", 1)
-    # gmsh.option.setNumber("Mesh.SubdivisionAlgorithm", 1)
     gmsh.option.setNumber("Mesh.CharacteristicLengthMax",1.0)
     gmsh.model.mesh.generate(gdim)
     gmsh.model.mesh.setOrder(2)
@@ -159,7 +156,7 @@ bcs = [fem.dirichletbc(h, dofs_inflow, V.sub(0)),
 # Parameters
 nu = fem.Constant(mesh, ScalarType(1.0), name = "ν", graph = graph_)
 alpha = 10.0
-f = fem.Function(V_u, name="f")
+f = fem.Function(V_u, name="f", graph=graph_)
 f.interpolate(lambda x: (0.0 *x[0], 0.0 + 0.0*x[1]))
 
 # Variational formulation
@@ -184,7 +181,7 @@ graph_.visualise()
 
 dJdnu = graph_.backprop(id(J), id(nu))
 dJdg = graph_.backprop(id(J), id(g))
-# dJdf = graph_.backprop(id(J), id(f))
+dJdf = graph_.backprop(id(J), id(f))
 
 
 # Visualise the solution
@@ -201,47 +198,7 @@ with io.XDMFFile(MPI.COMM_WORLD, "stokes_results.xdmf", "w") as xdmf:
 print("J(u, p) = ", J)
 print("dJdnu = ", dJdnu)
 print("||dJdg||_L2 = ", np.sqrt(np.dot(dJdg, dJdg)))
-
-dJdu = ufl.derivative(J_form, up)
-dJdu = fem.assemble_vector(fem.form(dJdu)).array
-
-dJdf = ufl.derivative(J_form, f)
-dJdf = fem.assemble_vector(fem.form(dJdf)).array
-
-dFdu = ufl.derivative(F, up)
-dFdu = fem.assemble_matrix(fem.form(dFdu), bcs = bcs).to_dense()
-# We now need to apply the boundary conditions to the rhs of the adjoint problem
-for bc in bcs:
-    for dofs in bc.dof_indices()[0]:
-        dJdu[int(dofs)] = 0
-
-adjoint_solution = np.linalg.solve(dFdu.transpose(), -dJdu.transpose())
-
-dFdf = ufl.derivative(F, f)
-dFdf = dolfinx.fem.petsc.assemble_matrix(fem.form(dFdf))
-dFdf.assemble()
-from scipy.sparse import csr_matrix
-csr = csr_matrix(dFdf.getValuesCSR()[::-1], shape=dFdf.size)
-dFdf = csr.todense()
-grad = adjoint_solution.transpose() @ dFdf
-dJdf = grad + dJdf
-
-print("||dJdf||_L2 = ", np.sqrt(np.dot(dJdf, dJdf.transpose())))
-
-# Visualise the solution
-grad_func = fem.Function(V_u, name="dJdbc")
-grad_func_f = fem.Function(V_u, name="dJdf")
-grad_func.vector.setArray(dJdg)
-grad_func_f.vector.setArray(dJdf)
-u, p = up.split()
-u.name = "velocity"
-p.name = "pressure"
-with io.XDMFFile(MPI.COMM_WORLD, "stokes_results.xdmf", "w") as xdmf:
-    xdmf.write_mesh(mesh)
-    xdmf.write_function(u)
-    xdmf.write_function(p)
-    xdmf.write_function(grad_func)
-    xdmf.write_function(grad_func_f)
+print("||dJdf||_L2 = ", np.sqrt(np.dot(dJdf, dJdf)))
 
 
 import unittest
