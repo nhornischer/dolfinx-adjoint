@@ -7,6 +7,8 @@ import networkx as nx
 from .node import Node, AbstractNode
 from .edge import Edge
 
+import ctypes
+
 class Graph:
     def __init__(self):
         self.nodes = []
@@ -18,10 +20,17 @@ class Graph:
     def add_edge(self, edge : Edge):
         self.edges.append(edge)
 
-    def get_node(self, id : int):
+    def get_node(self, id : int, version = None):
         for node in self.nodes:
             if node.id == id:
-                return node
+                object = ctypes.cast(id, ctypes.py_object).value
+                if version is None:
+                    if hasattr(object, "version"):
+                        version = object.version
+                    else:
+                        version = 0
+                if node.version == version:
+                    return node
         return None
     
     def remove_edge(self, edge : Edge):
@@ -39,14 +48,42 @@ class Graph:
                 return edge
         return None
     
+    def print(self):
+        print("#"*64)
+        print(f"Graph object with {len(self.nodes)} nodes and {len(self.edges)} edges.")
+        print("Nodes:")
+        for node in self.nodes:
+            print(f"\t{node}")
+        print("Edges:")
+        for edge in self.edges:
+            print(f"\t{edge}")
+        print("Gradient functions:")
+        for node in self.nodes:
+            if node.get_gradFuncs() == []:
+                continue
+            print(f"\t{node}")
+            for gradFunc in node.get_gradFuncs():
+                print(f"\t\t{gradFunc}")
+        print("Next functions:")
+        for edge in self.edges:
+            if edge.next_functions == []:
+                continue
+            print(f"\t{edge}")
+            for next_function in edge.next_functions:
+                print(f"\t\t{next_function}")
+        print("#"*64)
+
+    def __str__(self):
+        return f"Graph object with {len(self.nodes)} nodes and {len(self.edges)} edges."
+    
     def to_networkx(self):
         nx_graph = nx.DiGraph()
         for node in self.nodes:
-            nx_graph.add_node(node.id, name = node.name)
+            nx_graph.add_node(id(node), name = node.name)
             if type(node) == AbstractNode:
-                nx_graph.nodes[node.id]["color"] = 'pink'
+                nx_graph.nodes[id(node)]["color"] = 'pink'
             else:
-                nx_graph.nodes[node.id]["color"] = 'lightblue'
+                nx_graph.nodes[id(node)]["color"] = 'lightblue'
 
         for edge in self.edges:
             if not edge.__class__.__name__ == "Edge":
@@ -57,7 +94,9 @@ class Graph:
                 color = 'black'
             else:
                 color = 'grey'
-            nx_graph.add_edge(edge.predecessor.id, edge.successor.id, tag = tag, color = color)
+            node_predecessor = self.get_node(edge.predecessor.id)
+            node_successor = self.get_node(edge.successor.id)
+            nx_graph.add_edge(id(node_predecessor), id(node_successor), tag = tag, color = color)
         return nx_graph
     
     def visualise(self, filename = "graph.pdf"):
@@ -70,8 +109,11 @@ class Graph:
         edge_labels = nx.get_edge_attributes(nx_graph, "tag")
         edge_colors = nx.get_edge_attributes(nx_graph, "color")
         node_colors = nx.get_node_attributes(nx_graph, "color")
-        nx.draw_shell(nx_graph, labels=labels,node_color = node_colors.values(),  edge_color = edge_colors.values(), with_labels=True)
+        nx.draw_shell(nx_graph, labels=labels, node_color = node_colors.values(),  edge_color = edge_colors.values(), with_labels=True)
         nx.draw_networkx_edge_labels(nx_graph, pos=nx.shell_layout(nx_graph), edge_labels=edge_labels)
+        
+        # nx.draw_shell(nx_graph, with_labels=True)
+        
         plt.savefig(filename)
     
     def backprop(self, function_id, variable_id):

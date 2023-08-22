@@ -1,11 +1,21 @@
 class AbstractNode:
-    def __init__(self, object, **kwargs):
+    def __init__(self, object, version = 0, **kwargs):
         self.id = id(object)
+        self.version = version
+        if version != 0:
+            object.version = version
         self.gradFuncs = []
         if "name" in kwargs:
-            self.name = kwargs["name"]
+            self._name = kwargs["name"]
         else:
-            self.name = str(object.__module__ + "."+ object.__class__.__name__)
+            self._name = str(object.__module__ + "."+ object.__class__.__name__)
+
+    @property
+    def name(self):
+        if self.version != 0:
+            return f"{self._name} [{str(self.version)}]"
+        else:
+            return str(self._name)
 
     def set_gradFuncs(self, list):
         self.gradFuncs = list
@@ -28,10 +38,9 @@ class AbstractNode:
 class Node(AbstractNode): 
     """
     These nodes of the graph are used as context and operation variables. 
-    Since we do not want"""
+    """
     def __init__(self, object, **kwargs):
         super().__init__(object, **kwargs)
-        self.version = 0
         self.grad = None
 
     def set_grad(self, value):
@@ -47,13 +56,13 @@ class Node(AbstractNode):
         import numpy as np
         if self.grad is None:
             if type(value) == np.ndarray:
-                print(f"Accumulating gradient: {np.shape(value)}")
+                print(f"Accumulating gradient for {self.name}: {np.shape(value)}")
             else:
-                print(f"Accumulating gradient: {value}")
+                print(f"Accumulating gradient for {self.name}: {value}")
             self.grad = value
         else:
             if type(value) == np.ndarray:
-                print(f"Accumulating gradient: {np.shape(self.grad)} + {np.shape(value)}")
+                print(f"Accumulating gradient for {self.name}: {np.shape(self.grad)} + {np.shape(value)}")
             else:
-                print(f"Accumulating gradient: {self.grad} + {value}")
+                print(f"Accumulating gradient for {self.name}: {self.grad} + {value}")
             self.grad += value

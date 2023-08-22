@@ -19,25 +19,27 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
             F_form = args[0]
             u = args[1]
 
-            u_node = _graph.get_node(id(u))
+            problem_node = graph.AbstractNode(self)
+            _graph.add_node(problem_node)
+
             for coefficient in F_form.coefficients():
                 if coefficient == u:
                     continue
                 coefficient_node = _graph.get_node(id(coefficient))
                 if not coefficient_node == None:
                     ctx = [F_form, u, coefficient, self.bcs]
-                    coefficient_edge = NonlinearProblem_Coefficient_Edge(coefficient_node, u_node, ctx=ctx)
+                    coefficient_edge = NonlinearProblem_Coefficient_Edge(coefficient_node, problem_node, ctx=ctx)
                     _graph.add_edge(coefficient_edge)
-                    u_node.append_gradFuncs(coefficient_edge)
+                    problem_node.append_gradFuncs(coefficient_edge)
                     coefficient_edge.set_next_functions(coefficient_node.get_gradFuncs())
                     
             for constant in F_form.constants():
                 constant_node = _graph.get_node(id(constant))
                 if not constant_node == None:
                     ctx = [F_form, u, constant, self.bcs]
-                    constant_edge = NonlinearProblem_Constant_Edge(constant_node, u_node, ctx=ctx)
+                    constant_edge = NonlinearProblem_Constant_Edge(constant_node, problem_node, ctx=ctx)
                     _graph.add_edge(constant_edge)
-                    u_node.append_gradFuncs(constant_edge)
+                    problem_node.append_gradFuncs(constant_edge)
                     constant_edge.set_next_functions(constant_node.get_gradFuncs())
 
             if hasattr(self, "bcs"):
@@ -45,9 +47,9 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
                     bc_node = _graph.get_node(id(bc))
                     if not bc_node == None:
                         ctx = [F_form, u, self.bcs, self._a]
-                        bc_edge = NonlinearProblem_Boundary_Edge(bc_node, u_node, ctx=ctx)
+                        bc_edge = NonlinearProblem_Boundary_Edge(bc_node, problem_node, ctx=ctx)
                         _graph.add_edge(bc_edge)
-                        u_node.append_gradFuncs(bc_edge)
+                        problem_node.append_gradFuncs(bc_edge)
                         bc_edge.set_next_functions(bc_node.get_gradFuncs())
 
 class NonlinearProblem_Coefficient_Edge(graph.Edge):

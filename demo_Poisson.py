@@ -78,10 +78,10 @@ bcs = [fem.dirichletbc(uD_L, boundary_dofs_L, graph = graph_),
        fem.dirichletbc(uD_B, boundary_dofs_B)]
 # Define the problem solver and solve it
 problem = fem.petsc.NonlinearProblem(F, uh, bcs=bcs, graph = graph_)             
-solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)          
-solver.solve(uh)                                                  
+solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph = graph_)          
+solver.solve(uh, graph = graph_)                                                  
 # Define profile g
-g = fem.Function(W, name="g", graph = graph_)                                   
+g = fem.Function(W, name="g")                                   
 g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))   
 # Define the objective function
 alpha = fem.Constant(domain, ScalarType(1e-6), name = "α")      
@@ -89,14 +89,16 @@ J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + alpha * ufl.inner(f, f) * uf
 J = fem.assemble_scalar(fem.form(J_form, graph = graph_), graph = graph_)                       
 
 graph_.visualise()
+# graph_.print()
 dJdf = graph_.backprop(id(J), id(f))
 dJdnu = graph_.backprop(id(J), id(nu))
 dJdbc = graph_.backprop(id(J), id(uD_L))
 
 print("J(u) = ", J)
+print("dJdnu = ", dJdnu)
 print("||dJ/df||_L2 = ", np.sqrt(np.dot(dJdf, dJdf)))
 print("||dJ/dbc||_L2 = ", np.sqrt(np.dot(dJdbc, dJdbc)))
-print("dJdnu = ", dJdnu)
+
 
 # Visualise the results by saving them to a file as functions
 dJdf_func = fem.Function(W, name="dJdf")

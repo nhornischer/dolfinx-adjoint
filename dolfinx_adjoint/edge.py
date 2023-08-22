@@ -46,5 +46,7 @@ class Edge:
         grad_value = self.calculate_adjoint()
         for function in self.next_functions:
             function(grad_value)
-        if self.next_functions == []:
+        if self.next_functions == [] and type(self.predecessor) == Node:
             self.predecessor.accumulate_grad(grad_value)
+    def __str__(self):
+        return f"{str(self.predecessor)} -> {str(self.successor)}"
