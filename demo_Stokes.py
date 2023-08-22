@@ -168,9 +168,9 @@ F = a - L
 
 # Define the problem solver
 problem = fem.petsc.NonlinearProblem(F, up, bcs=bcs, graph=graph_)
-solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)
+solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph=graph_)
 
-solver.solve(up)    
+solver.solve(up, graph=graph_)   
 
 # Define the objective function
 dObs = ufl.Measure("ds", domain=mesh, subdomain_data=ft, subdomain_id=obstacle_marker)
