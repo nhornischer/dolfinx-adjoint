@@ -27,7 +27,12 @@ class NewtonSolver(nls.petsc.NewtonSolver):
         if "graph" not in kwargs:
             output = super().solve(*args, **kwargs)
         else:
-            function_node = graph.Node(args[0], version = 1, name = args[0].name)
+            if "version" in kwargs:
+                version = kwargs["version"]
+                del kwargs["version"]
+            else:
+                version = 1
+            function_node = graph.Node(args[0], version = version, name = args[0].name)
             _graph = kwargs["graph"]
             del kwargs["graph"]
             _graph.add_node(function_node)
@@ -41,3 +46,4 @@ class NewtonSolver(nls.petsc.NewtonSolver):
             output = super().solve(*args, **kwargs)
 
         return output
+

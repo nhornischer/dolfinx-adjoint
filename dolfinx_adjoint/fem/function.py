@@ -42,11 +42,24 @@ class Function(fem.Function):
             _graph.add_edge(copy_edge)
             return output
         
-    def assign(self, vector, graph = None):
-        self.vector[:] = vector
-        if graph is not None:
-            function_node = graph.get_node(id(self))
-            function_node.version += 1
+    def assign(self, function, **kwargs):
+        self.vector[:] = function.vector[:]
+        if "graph" in kwargs:
+            _graph = kwargs["graph"]
+            del kwargs["graph"]
+            if "version" in kwargs:
+                version = kwargs["version"]
+            else:
+                version = 0
+            assign_node = graph.Node(self, name=self.name, version = version)
+            _graph.add_node(assign_node)
+
+            function_node = _graph.get_node(id(function))
+            assign_edge = graph.Edge(function_node, assign_node)
+            assign_node.set_gradFuncs([assign_edge])
+            _graph.add_edge(assign_edge)
+            assign_edge.set_next_functions(function_node.get_gradFuncs())
+            
 
 class Constant(fem.Constant):
     def __init__(self, *args, **kwargs):

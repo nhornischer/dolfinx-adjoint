@@ -48,7 +48,7 @@ class Graph:
                 return edge
         return None
     
-    def print(self):
+    def print(self, detailed = False):
         print("#"*64)
         print(f"Graph object with {len(self.nodes)} nodes and {len(self.edges)} edges.")
         print("Nodes:")
@@ -57,6 +57,8 @@ class Graph:
         print("Edges:")
         for edge in self.edges:
             print(f"\t{edge}")
+        if not detailed:
+            return
         print("Gradient functions:")
         for node in self.nodes:
             if node.get_gradFuncs() == []:
@@ -94,26 +96,29 @@ class Graph:
                 color = 'black'
             else:
                 color = 'grey'
-            node_predecessor = self.get_node(edge.predecessor.id)
-            node_successor = self.get_node(edge.successor.id)
-            nx_graph.add_edge(id(node_predecessor), id(node_successor), tag = tag, color = color)
+            nx_graph.add_edge(id(edge.predecessor), id(edge.successor), tag = tag, color = color)
         return nx_graph
     
-    def visualise(self, filename = "graph.pdf"):
+    def visualise(self, filename = "graph.pdf", style = "planar"):
         """Visualise the graph"""
         import matplotlib.pyplot as plt
-        # plt.figure(figsize=(10,8))
-        plt.figure()
+        plt.figure(figsize=(10,8))
         nx_graph = self.to_networkx()
         labels = nx.get_node_attributes(nx_graph, "name")
         edge_labels = nx.get_edge_attributes(nx_graph, "tag")
         edge_colors = nx.get_edge_attributes(nx_graph, "color")
         node_colors = nx.get_node_attributes(nx_graph, "color")
-        nx.draw_shell(nx_graph, labels=labels, node_color = node_colors.values(),  edge_color = edge_colors.values(), with_labels=True)
-        nx.draw_networkx_edge_labels(nx_graph, pos=nx.shell_layout(nx_graph), edge_labels=edge_labels)
-        
-        # nx.draw_shell(nx_graph, with_labels=True)
-        
+        if style == "planar":
+            nx.draw_planar(nx_graph, labels=labels, node_color = node_colors.values(),  edge_color = edge_colors.values(), with_labels=True)
+            edge_pos = nx.planar_layout(nx_graph)
+        elif style == "shell":
+            nx.draw_shell(nx_graph, labels=labels, node_color = node_colors.values(),  edge_color = edge_colors.values(), with_labels=True)
+            edge_pos = nx.shell_layout(nx_graph)
+        else:
+            print("Given style is not implemented. Using spring layout")
+            nx.draw(nx_graph, labels=labels, node_color = node_colors.values(),  edge_color = edge_colors.values(), with_labels=True)
+            edge_pos = nx.spring_layout(nx_graph)
+        nx.draw_networkx_edge_labels(nx_graph, pos=edge_pos, edge_labels=edge_labels)
         plt.savefig(filename)
     
     def backprop(self, function_id, variable_id):

@@ -80,20 +80,21 @@ u_prev = initial_guess.copy(graph=graph_, name = "u_prev")
 u_next = initial_guess.copy(graph=graph_, name = "u_next")
 
 F = ufl.inner((u_next-u_prev)/dt_constant, v) * ufl.dx + ufl.inner(ufl.grad(u_next), ufl.grad(v)) * ufl.dx
-problem = fem.petsc.NonlinearProblem(F, u_next, graph=graph_)
-solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)
-
 t = 0.0
-test_states = [initial_guess.copy(graph=graph_, name = "temperature_" + str(0))]
+test_states = [u_next.copy(graph=graph_, name = "temperature_" + str(0))]
 xdmf = io.XDMFFile(domain.comm, "heat_results.xdmf", "w")
 xdmf.write_mesh(domain)
 xdmf.write_function(u_next)
 i = 0
 while t < T:
-    solver.solve(u_next)
-    u_prev.assign(u_next.vector[:])
-    t += dt
     i += 1
+    F = ufl.inner((u_next-u_prev)/dt_constant, v) * ufl.dx + ufl.inner(ufl.grad(u_next), ufl.grad(v)) * ufl.dx
+    problem = fem.petsc.NonlinearProblem(F, u_next, graph=graph_)
+    solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph = graph_)
+
+    solver.solve(u_next, graph=graph_, version = i)
+    t += dt
+    u_prev.assign(u_next, graph = graph_, version = i)
     test_states.append(u_next.copy(graph=graph_, name = "temperature_" + str(i)))
     xdmf.write_function(u_next, t)
 xdmf.close()
@@ -102,41 +103,43 @@ alpha = fem.Constant(domain, ScalarType(1.0e-7))
 combined = zip(true_states, test_states)
 J_form = sum(ufl.inner(true - test, true - test) * ufl.dx for (true, test) in combined) + alpha * ufl.inner(ufl.grad(initial_guess), ufl.grad(initial_guess)) * ufl.dx
 J = fem.assemble_scalar(fem.form(J_form, graph=graph_), graph=graph_)
-print("J(u) = ", J)
-graph_.remove_edge(graph_.get_edge(id(initial_guess), id(u_next)))
-graph_.visualise()
+
+if __name__ == "__main__":
+    graph_.visualise()
+
+    dJdinit = graph_.backprop(id(J), id(initial_guess))
+
+    grad_func = fem.Function(V, name="gradient")
+    grad_func.vector[:] = dJdinit
+    with io.XDMFFile(MPI.COMM_WORLD, "heat_gradient.xdmf", "w") as xdmf:
+        xdmf.write_mesh(domain)
+        xdmf.write_function(grad_func)
+
+    print("J(u) = ", J)    
+    print("||dJdu_0||_L2 = ", np.sqrt(np.dot(dJdinit, dJdinit)))
 
 import unittest
-gradient = 0.0
-for i, u in enumerate(test_states):
-    dJdu = ufl.derivative(J_form, u)
-    dJdu = fem.assemble_vector(fem.form(dJdu)).array
-
-    if i == 0:
-        gradient += dJdu
-    else:
-        start = dJdu
-        for j in range(i, 0, -1):
-            F_manipulated = ufl.replace(F, {u_next: u, u_prev: test_states[j-1]})
-            dFdu_next = ufl.derivative(F_manipulated, u)
-            dFdu_next = fem.assemble_matrix(fem.form(dFdu_next)).to_dense()
-            dFdu_prev = ufl.derivative(F_manipulated, test_states[j-1])
-            dFdu_prev = fem.assemble_matrix(fem.form(dFdu_prev)).to_dense()
-            adjoint_sol = np.linalg.solve(dFdu_next.transpose(), - start.transpose())
-            start = adjoint_sol @ dFdu_prev
-        gradient += start
-
-grad_func = fem.Function(V, name="gradient")
-grad_func.vector[:] = gradient
-with io.XDMFFile(MPI.COMM_WORLD, "heat_gradient.xdmf", "w") as xdmf:
-    xdmf.write_mesh(domain)
-    xdmf.write_function(grad_func)
-
-dJdinit = graph_.backprop(id(J), id(initial_guess))
-    
-print("||dJdu_true||_L2 = ", np.sqrt(np.dot(gradient, gradient)))
-print("||dJdu_test||_L2 = ", np.sqrt(np.dot(dJdinit, dJdinit)))
-
 class TestHeat(unittest.TestCase):
     def test_Heat_inital(self):
-        pass
+        gradient = 0.0
+        for i, u in enumerate(test_states):
+            dJdu = ufl.derivative(J_form, u)
+            dJdu = fem.assemble_vector(fem.form(dJdu)).array
+            print(u.vector.array[:])
+            if i == 0:
+                gradient += dJdu
+            else:
+                start = dJdu
+                for j in range(i, 0, -1):    
+                    F_manipulated = ufl.replace(F, {u_next: u, u_prev: test_states[j-1]})
+                    dFdu_next = ufl.derivative(F_manipulated, u)
+                    dFdu_next = fem.assemble_matrix(fem.form(dFdu_next)).to_dense()
+                    dFdu_prev = ufl.derivative(F_manipulated, test_states[j-1])
+                    dFdu_prev = fem.assemble_matrix(fem.form(dFdu_prev)).to_dense()
+                    adjoint_sol = np.linalg.solve(dFdu_next.transpose(), - start.transpose())
+                    start = adjoint_sol @ dFdu_prev
+                gradient += start
+    
+        self.assertTrue(np.allclose(gradient, graph_.backprop(id(J), id(initial_guess))))
+
+    

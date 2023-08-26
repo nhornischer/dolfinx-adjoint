@@ -27,7 +27,7 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
                     continue
                 coefficient_node = _graph.get_node(id(coefficient))
                 if not coefficient_node == None:
-                    ctx = [F_form, u, coefficient, self.bcs]
+                    ctx = [F_form, u, coefficient, self.bcs, _graph]
                     coefficient_edge = NonlinearProblem_Coefficient_Edge(coefficient_node, problem_node, ctx=ctx)
                     _graph.add_edge(coefficient_edge)
                     problem_node.append_gradFuncs(coefficient_edge)
@@ -80,19 +80,22 @@ class NonlinearProblem_Coefficient_Edge(graph.Edge):
     
     def calculate_adjoint(self):
         # Extract variables from contextvariable ctx
-        F, u, m, bcs = self.ctx
+        F, u, m, bcs, _graph = self.ctx
 
+        m_node = self.predecessor
+        u_node = _graph.get_node(id(u), version = m_node.version +1)
         # Construct the Jacobian J = ∂F/∂u
         V = u.function_space
         du = ufl.TrialFunction(V)
-        J = fem.petsc.assemble_matrix(fem.form(ufl.derivative(F, u, du)), bcs = bcs)
+        F_manipulated = ufl.replace(F, {u: u_node.data, m: m_node.data})
+        J = fem.petsc.assemble_matrix(fem.form(ufl.derivative(F_manipulated, u_node.data, du)), bcs = bcs)
         J.assemble()
 
         # Solve (J⁻¹)ᵀ λ = -x where x is the input with a sparse linear solver
         adjoint_solution = AdjointProblemSolver(J.transpose(), -self.input_value, fem.Function(V), bcs = bcs)
 
         # Calculate ∂F/∂m
-        dFdm = fem.petsc.assemble_matrix(fem.form(ufl.derivative(F, m)))
+        dFdm = fem.petsc.assemble_matrix(fem.form(ufl.derivative(F_manipulated, m_node.data)))
         dFdm.assemble()
         
         # Calculate λᵀ * ∂F/∂m

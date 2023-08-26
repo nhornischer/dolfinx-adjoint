@@ -88,30 +88,34 @@ alpha = fem.Constant(domain, ScalarType(1e-6), name = "α")
 J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + alpha * ufl.inner(f, f) * ufl.dx
 J = fem.assemble_scalar(fem.form(J_form, graph = graph_), graph = graph_)                       
 
-graph_.visualise()
-# graph_.print()
-dJdf = graph_.backprop(id(J), id(f))
-dJdnu = graph_.backprop(id(J), id(nu))
-dJdbc = graph_.backprop(id(J), id(uD_L))
 
-print("J(u) = ", J)
-print("dJdnu = ", dJdnu)
-print("||dJ/df||_L2 = ", np.sqrt(np.dot(dJdf, dJdf)))
-print("||dJ/dbc||_L2 = ", np.sqrt(np.dot(dJdbc, dJdbc)))
+# Main-Method
+if __name__ == "__main__":
+    graph_.visualise()
+    graph_.print()
+    dJdf = graph_.backprop(id(J), id(f))
+    dJdnu = graph_.backprop(id(J), id(nu))
+    dJdbc = graph_.backprop(id(J), id(uD_L))
+
+    print("J(u) = ", J)
+    print("dJdnu = ", dJdnu)
+    print("||dJ/df||_L2 = ", np.sqrt(np.dot(dJdf, dJdf)))
+    print("||dJ/dbc||_L2 = ", np.sqrt(np.dot(dJdbc, dJdbc)))
 
 
-# Visualise the results by saving them to a file as functions
-dJdf_func = fem.Function(W, name="dJdf")
-dJdf_func.vector.setArray(dJdf)
-dJdbc_func = fem.Function(V, name="dJdbc")
-dJdbc_func.vector.setArray(dJdbc)
-with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "poisson_results.xdmf", "w") as xdmf:
-    xdmf.write_mesh(domain)
-    xdmf.write_function(uh)
-    xdmf.write_function(f)
-    xdmf.write_function(g)
-    xdmf.write_function(dJdf_func)
-    xdmf.write_function(dJdbc_func)
+    # Visualise the results by saving them to a file as functions
+    dJdf_func = fem.Function(W, name="dJdf")
+    dJdf_func.vector.setArray(dJdf)
+    dJdbc_func = fem.Function(V, name="dJdbc")
+    dJdbc_func.vector.setArray(dJdbc)
+    with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "poisson_results.xdmf", "w") as xdmf:
+        xdmf.write_mesh(domain)
+        xdmf.write_function(uh)
+        xdmf.write_function(f)
+        xdmf.write_function(g)
+        xdmf.write_function(dJdf_func)
+        xdmf.write_function(dJdbc_func)
+
 
 import unittest
 

@@ -177,28 +177,30 @@ dObs = ufl.Measure("ds", domain=mesh, subdomain_data=ft, subdomain_id=obstacle_m
 J_form  = 0.5 * ufl.inner(ufl.grad(u), ufl.grad(u)) * ufl.dx + alpha / 2 * ufl.inner(g, g) * dObs
 
 J = fem.assemble_scalar(fem.form(J_form, graph=graph_), graph=graph_)
-graph_.visualise()
 
-dJdnu = graph_.backprop(id(J), id(nu))
-dJdg = graph_.backprop(id(J), id(g))
-dJdf = graph_.backprop(id(J), id(f))
+if __name__ == "__main__":
+    graph_.visualise()
+
+    dJdnu = graph_.backprop(id(J), id(nu))
+    dJdg = graph_.backprop(id(J), id(g))
+    dJdf = graph_.backprop(id(J), id(f))
 
 
-# Visualise the solution
-grad_func = fem.Function(V_u, name="dJdbc")
-grad_func.vector.setArray(dJdg)
-u, p = up.split()
-u.name = "velocity"
-p.name = "pressure"
-with io.XDMFFile(MPI.COMM_WORLD, "stokes_results.xdmf", "w") as xdmf:
-    xdmf.write_mesh(mesh)
-    xdmf.write_function(u)
-    xdmf.write_function(p)
-    xdmf.write_function(grad_func)
-print("J(u, p) = ", J)
-print("dJdnu = ", dJdnu)
-print("||dJdg||_L2 = ", np.sqrt(np.dot(dJdg, dJdg)))
-print("||dJdf||_L2 = ", np.sqrt(np.dot(dJdf, dJdf)))
+    # Visualise the solution
+    grad_func = fem.Function(V_u, name="dJdbc")
+    grad_func.vector.setArray(dJdg)
+    u, p = up.split()
+    u.name = "velocity"
+    p.name = "pressure"
+    with io.XDMFFile(MPI.COMM_WORLD, "stokes_results.xdmf", "w") as xdmf:
+        xdmf.write_mesh(mesh)
+        xdmf.write_function(u)
+        xdmf.write_function(p)
+        xdmf.write_function(grad_func)
+    print("J(u, p) = ", J)
+    print("dJdnu = ", dJdnu)
+    print("||dJdg||_L2 = ", np.sqrt(np.dot(dJdg, dJdg)))
+    print("||dJdf||_L2 = ", np.sqrt(np.dot(dJdf, dJdf)))
 
 
 import unittest
@@ -316,7 +318,6 @@ class TestStokes(unittest.TestCase):
             matrix[index, index] = 1.0
 
         gradient = (matrix @ gradient)[V_u_map] + dJdg
-
         self.assertTrue(np.allclose(gradient, graph_.backprop(id(J), id(g))))
 
 

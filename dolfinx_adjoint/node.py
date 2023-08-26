@@ -8,7 +8,7 @@ class AbstractNode:
         if "name" in kwargs:
             self._name = kwargs["name"]
         else:
-            self._name = str(object.__module__ + "."+ object.__class__.__name__)
+            self._name = str(object.__class__.__name__)
 
     @property
     def name(self):
@@ -41,6 +41,8 @@ class Node(AbstractNode):
     """
     def __init__(self, object, **kwargs):
         super().__init__(object, **kwargs)
+        import copy
+        self.data = copy.copy(object)
         self.grad = None
 
     def set_grad(self, value):
