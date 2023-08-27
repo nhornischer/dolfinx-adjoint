@@ -21,18 +21,22 @@ class Graph:
         self.edges.append(edge)
 
     def get_node(self, id : int, version = None):
+        # Get all nodes with the given id
+        node_versions = {}
         for node in self.nodes:
             if node.id == id:
-                object = ctypes.cast(id, ctypes.py_object).value
-                if version is None:
-                    if hasattr(object, "version"):
-                        version = object.version
-                    else:
-                        version = 0
-                if node.version == version:
-                    return node
-        return None
-    
+                node_versions[node.version] = node
+        if node_versions == {}: 
+            return None
+        # If no version is given, return the latest version
+        if version is None:
+            latest_version = max(node_versions.keys())
+            return node_versions[latest_version]
+        # If a version is given, return the node with the given version
+        elif version in node_versions.keys():
+            return node_versions[version]
+        else: 
+            return None
     def remove_edge(self, edge : Edge):
         self.edges.remove(edge)
         for node in self.nodes:

@@ -82,9 +82,6 @@ u_next = initial_guess.copy(graph=graph_, name = "u_next")
 F = ufl.inner((u_next-u_prev)/dt_constant, v) * ufl.dx + ufl.inner(ufl.grad(u_next), ufl.grad(v)) * ufl.dx
 t = 0.0
 test_states = [u_next.copy(graph=graph_, name = "temperature_" + str(0))]
-xdmf = io.XDMFFile(domain.comm, "heat_results.xdmf", "w")
-xdmf.write_mesh(domain)
-xdmf.write_function(u_next)
 i = 0
 while t < T:
     i += 1
@@ -96,8 +93,6 @@ while t < T:
     t += dt
     u_prev.assign(u_next, graph = graph_, version = i)
     test_states.append(u_next.copy(graph=graph_, name = "temperature_" + str(i)))
-    xdmf.write_function(u_next, t)
-xdmf.close()
 
 alpha = fem.Constant(domain, ScalarType(1.0e-7))
 combined = zip(true_states, test_states)
@@ -105,15 +100,26 @@ J_form = sum(ufl.inner(true - test, true - test) * ufl.dx for (true, test) in co
 J = fem.assemble_scalar(fem.form(J_form, graph=graph_), graph=graph_)
 
 if __name__ == "__main__":
+    # Visualize the graph
     graph_.visualise()
 
     dJdinit = graph_.backprop(id(J), id(initial_guess))
 
+    # Visualization of the results
     grad_func = fem.Function(V, name="gradient")
     grad_func.vector[:] = dJdinit
-    with io.XDMFFile(MPI.COMM_WORLD, "heat_gradient.xdmf", "w") as xdmf:
-        xdmf.write_mesh(domain)
-        xdmf.write_function(grad_func)
+
+    temperature_function = fem.Function(V, name = "temperature")
+    profile_function = fem.Function(V, name = "profile")
+    xdmf = io.XDMFFile(MPI.COMM_WORLD, "heat_results.xdmf", "w")
+    xdmf.write_mesh(domain)
+    xdmf.write_function(grad_func, 0.0)
+    for i, u in enumerate(test_states):
+        temperature_function.vector[:] = u.vector[:]
+        profile_function.vector[:] = true_states[i].vector[:]
+        xdmf.write_function(temperature_function, t = times[i])
+        xdmf.write_function(profile_function, t = times[i])
+    xdmf.close()
 
     print("J(u) = ", J)    
     print("||dJdu_0||_L2 = ", np.sqrt(np.dot(dJdinit, dJdinit)))

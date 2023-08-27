@@ -22,12 +22,14 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
             problem_node = graph.AbstractNode(self)
             _graph.add_node(problem_node)
 
+            u_node = _graph.get_node(id(u))
+
             for coefficient in F_form.coefficients():
                 if coefficient == u:
                     continue
                 coefficient_node = _graph.get_node(id(coefficient))
                 if not coefficient_node == None:
-                    ctx = [F_form, u, coefficient, self.bcs, _graph]
+                    ctx = [F_form, u_node, coefficient, self.bcs, _graph]
                     coefficient_edge = NonlinearProblem_Coefficient_Edge(coefficient_node, problem_node, ctx=ctx)
                     _graph.add_edge(coefficient_edge)
                     problem_node.append_gradFuncs(coefficient_edge)
@@ -36,7 +38,7 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
             for constant in F_form.constants():
                 constant_node = _graph.get_node(id(constant))
                 if not constant_node == None:
-                    ctx = [F_form, u, constant, self.bcs]
+                    ctx = [F_form, u_node, constant, self.bcs, _graph]
                     constant_edge = NonlinearProblem_Constant_Edge(constant_node, problem_node, ctx=ctx)
                     _graph.add_edge(constant_edge)
                     problem_node.append_gradFuncs(constant_edge)
@@ -46,7 +48,7 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
                 for bc in self.bcs:
                     bc_node = _graph.get_node(id(bc))
                     if not bc_node == None:
-                        ctx = [F_form, u, self.bcs, self._a]
+                        ctx = [F_form, u_node, self.bcs, self._a, _graph]
                         bc_edge = NonlinearProblem_Boundary_Edge(bc_node, problem_node, ctx=ctx)
                         _graph.add_edge(bc_edge)
                         problem_node.append_gradFuncs(bc_edge)
@@ -80,14 +82,17 @@ class NonlinearProblem_Coefficient_Edge(graph.Edge):
     
     def calculate_adjoint(self):
         # Extract variables from contextvariable ctx
-        F, u, m, bcs, _graph = self.ctx
+        F, u_node, m, bcs, _graph = self.ctx
 
         m_node = self.predecessor
-        u_node = _graph.get_node(id(u), version = m_node.version +1)
+        
+        u = u_node.get_object()
+        u_next = _graph.get_node(u_node.id, version = u_node.version + 1)
+        
         # Construct the Jacobian J = ∂F/∂u
         V = u.function_space
         du = ufl.TrialFunction(V)
-        F_manipulated = ufl.replace(F, {u: u_node.data, m: m_node.data})
+        F_manipulated = ufl.replace(F, {u: u_next.data, m: m_node.data})
         J = fem.petsc.assemble_matrix(fem.form(ufl.derivative(F_manipulated, u_node.data, du)), bcs = bcs)
         J.assemble()
 
@@ -137,14 +142,11 @@ class NonlinearProblem_Constant_Edge(graph.Edge):
     def calculate_adjoint(self):
 
         # Extract variables from contextvariable ctx
-        F, u, m, bcs = self.ctx
+        F, u_node, m, bcs, _graph = self.ctx
 
-
-        b = -self.input_value.array[:]
-        for bc in bcs:
-            for dofs in bc.dof_indices()[0]:
-                b[int(dofs)] = 0.0
-
+        u = u_node.get_object()
+        u_next = _graph.get_node(u_node.id, version = u_node.version + 1)
+        
         # Construct the Jacobian J = ∂F/∂u
         V = u.function_space
         du = ufl.TrialFunction(V)
@@ -198,8 +200,11 @@ class NonlinearProblem_Boundary_Edge(graph.Edge):
     def calculate_adjoint(self):
 
         # Extract variables from contextvariable ctx
-        F, u, bcs, dFdbc_form = self.ctx
+        F, u_node, bcs, dFdbc_form, _graph = self.ctx
 
+        u = u_node.get_object()
+        u_next = _graph.get_node(u_node.id, version = u_node.version + 1)
+        
         # Construct the Jacobian J = ∂F/∂u
         V = u.function_space
         du = ufl.TrialFunction(V)
@@ -215,7 +220,6 @@ class NonlinearProblem_Boundary_Edge(graph.Edge):
         dFdbc.assemble()
 
         return dFdbc.transpose() * adjoint_solution.vector
-
 
 def AdjointProblemSolver(A, b, x : fem.Function, bcs = None):
     from dolfinx import cpp as _cpp

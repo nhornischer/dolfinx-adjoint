@@ -1,3 +1,4 @@
+import ctypes
 class AbstractNode:
     def __init__(self, object, version = 0, **kwargs):
         self.id = id(object)
@@ -44,6 +45,9 @@ class Node(AbstractNode):
         import copy
         self.data = copy.copy(object)
         self.grad = None
+
+    def get_object(self):
+        return ctypes.cast(self.id, ctypes.py_object).value
 
     def set_grad(self, value):
         self.grad = value
