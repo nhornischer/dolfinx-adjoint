@@ -88,18 +88,18 @@ alpha = fem.Constant(domain, ScalarType(1e-6), name = "α")
 J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + alpha * ufl.inner(f, f) * ufl.dx
 J = fem.assemble_scalar(fem.form(J_form, graph = graph_), graph = graph_)                       
 
-
 # Main-Method
 if __name__ == "__main__":
     graph_.visualise()
-    graph_.print()
+
+
     dJdf = graph_.backprop(id(J), id(f))
     dJdnu = graph_.backprop(id(J), id(nu))
     dJdbc = graph_.backprop(id(J), id(uD_L))
-
-    print("J(u) = ", J)
-    print("dJdnu = ", dJdnu)
-    print("||dJ/df||_L2 = ", np.sqrt(np.dot(dJdf, dJdf)))
+    if MPI.COMM_WORLD.rank == 0:
+        print("J(u) = ", J)
+        print("dJdnu = ", dJdnu)
+        print("||dJ/df||_L2 = ", np.sqrt(np.dot(dJdf, dJdf)))
     print("||dJ/dbc||_L2 = ", np.sqrt(np.dot(dJdbc, dJdbc)))
 
 

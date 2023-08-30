@@ -228,7 +228,6 @@ def AdjointProblemSolver(A, b, x : fem.Function, bcs = None):
     _solver = PETSc.KSP().create(x.function_space.mesh.comm)
     _solver.setOperators(A)
 
-
     _b = PETSc.Vec().createWithArray(b)
     if bcs is not None:
         new_array = _b.array_w.copy()
@@ -248,6 +247,3 @@ def AdjointProblemSolver(A, b, x : fem.Function, bcs = None):
     _solver.setFromOptions()
     _solver.solve(_b, _x)
     return x
-
-
-

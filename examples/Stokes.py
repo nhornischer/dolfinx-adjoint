@@ -99,24 +99,19 @@ if mesh_comm.rank == model_rank:
     gmsh.model.addPhysicalGroup(1, obstacle, obstacle_marker)
     gmsh.model.setPhysicalName(1, obstacle_marker, "Obstacle")
 
-    distance_field = gmsh.model.mesh.field.add("Distance")
-    gmsh.model.mesh.field.setNumbers(distance_field, "EdgesList", obstacle)
-    threshold_field = gmsh.model.mesh.field.add("Threshold")
-    gmsh.model.mesh.field.setNumber(threshold_field, "IField", distance_field)
-    gmsh.model.mesh.field.setNumber(threshold_field, "LcMin", 0.2)
-    gmsh.model.mesh.field.setNumber(threshold_field, "LcMax", r/2)
-    gmsh.model.mesh.field.setNumber(threshold_field, "DistMin", 0.2)
-    gmsh.model.mesh.field.setNumber(threshold_field, "DistMax",  r/2)
-    min_field = gmsh.model.mesh.field.add("Min")
-    gmsh.model.mesh.field.setNumbers(min_field, "FieldsList", [threshold_field])
-    gmsh.model.mesh.field.setAsBackgroundMesh(min_field)
-    gmsh.model.occ.synchronize()
+    gmsh.model.mesh.field.add("Distance", 1)
+    gmsh.model.mesh.field.setNumbers(1, "EdgesList", obstacle)
+    gmsh.model.mesh.field.add("Threshold", 2)
+    gmsh.model.mesh.field.setNumber(2, "IField", 1)
+    gmsh.model.mesh.field.setNumber(2, "LcMin", 0.2)
+    gmsh.model.mesh.field.setNumber(2, "LcMax", 0.8)
+    gmsh.model.mesh.field.setNumber(2, "DistMin", 0.1*r)
+    gmsh.model.mesh.field.setNumber(2, "DistMax", 0.5*r)
+    gmsh.model.mesh.field.add("Min", 5)
+    gmsh.model.mesh.field.setNumbers(5, "FieldsList", [2])
+    gmsh.model.mesh.field.setAsBackgroundMesh(5)
 
-    gmsh.option.setNumber("Mesh.Algorithm", 8)
-    gmsh.option.setNumber("Mesh.CharacteristicLengthMax",1.0)
-    gmsh.model.mesh.generate(gdim)
-    gmsh.model.mesh.setOrder(2)
-    gmsh.model.mesh.optimize("Netgen")
+    gmsh.model.mesh.generate(2)
 
 mesh, _, ft = io.gmshio.model_to_mesh(gmsh.model, mesh_comm, model_rank, gdim=gdim)
 ft.name = "Facet markers"
@@ -183,9 +178,9 @@ if __name__ == "__main__":
 
     dJdnu = graph_.backprop(id(J), id(nu))
     dJdg = graph_.backprop(id(J), id(g))
+
     dJdf = graph_.backprop(id(J), id(f))
-
-
+    
     # Visualise the solution
     grad_func = fem.Function(V_u, name="dJdbc")
     grad_func.vector.setArray(dJdg)

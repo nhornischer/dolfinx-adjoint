@@ -41,7 +41,11 @@ class DirichletBC_Edge(graph.Edge):
         # we apply it. The map is stored as an array where the index is equivalent to the
         # index in the correct space and the value is the index in the wrong space
         if map == None:
-            return self.input_value @ matrix
+            output = self.input_value @ matrix
         else:
-            return (self.input_value @ matrix)[map]
+            output = (self.input_value @ matrix)[map]
+        
+        # Convert to petsc vector
+        from petsc4py import PETSc
+        return PETSc.Vec().createWithArray(output)
 

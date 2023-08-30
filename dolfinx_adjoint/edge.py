@@ -1,4 +1,5 @@
 from .node import Node
+import petsc4py.PETSc as PETSc
 
 class Edge:
     def __init__(self, predecessor : Node, successor : Node, input_value = None, ctx = None):
@@ -40,13 +41,18 @@ class Edge:
         """
         return self.calculate_tlm()
         
-    def __call__(self, value):
+    def __call__(self, value : float or PETSc.Vec):
+        # Compute adjoint value
         self.input_value = value
-        print(f"Call to {self.__class__.__name__} from {str(self.successor)} to {str(self.predecessor)}")
         grad_value = self.calculate_adjoint()
+
+        # Call next functions in the path
         for function in self.next_functions:
             function(grad_value)
+
+        # Accumulate gradient if end of path
         if self.next_functions == [] and type(self.predecessor) == Node:
             self.predecessor.accumulate_grad(grad_value)
+    
     def __str__(self):
         return f"{str(self.predecessor)} -> {str(self.successor)}"

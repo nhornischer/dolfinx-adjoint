@@ -46,9 +46,9 @@ class Graph:
             if edge in edge.next_functions:
                 edge.remove_next_function(edge)
 
-    def get_edge(self, predecessor : int, successor : int):
+    def get_edge(self, predecessor : Node, successor : Node):
         for edge in self.edges:
-            if edge.predecessor.id == predecessor and edge.successor.id == successor:
+            if edge.predecessor == predecessor and edge.successor == successor:
                 return edge
         return None
     
@@ -85,7 +85,7 @@ class Graph:
     def to_networkx(self):
         nx_graph = nx.DiGraph()
         for node in self.nodes:
-            nx_graph.add_node(id(node), name = node.name)
+            nx_graph.add_node(id(node), name = node.name, node = node)
             if type(node) == AbstractNode:
                 nx_graph.nodes[id(node)]["color"] = 'pink'
             else:
@@ -100,7 +100,7 @@ class Graph:
                 color = 'black'
             else:
                 color = 'grey'
-            nx_graph.add_edge(id(edge.predecessor), id(edge.successor), tag = tag, color = color)
+            nx_graph.add_edge(id(edge.predecessor), id(edge.successor), tag = tag, color = color, edge = edge)
         return nx_graph
     
     def visualise(self, filename = "graph.pdf", style = "planar"):
@@ -125,25 +125,29 @@ class Graph:
         nx.draw_networkx_edge_labels(nx_graph, pos=edge_pos, edge_labels=edge_labels)
         plt.savefig(filename)
     
-    def backprop(self, function_id, variable_id):
+    def backprop(self, function_id, variable_id = None):
         self.reset_grads()
         function_node = self.get_node(function_id)
+        if variable_id is not None:
+            variable_node = self.get_node(variable_id)
+            self.get_backpropagation_path(id(variable_node), id(function_node))
+        else:
+            for edge in self.edges:
+                edge.marked = True
         grad_func = function_node.get_gradFuncs()[0]
         grad_func(1.0)
         return self.get_node(variable_id).get_grad()
 
     def get_backpropagation_path(self, from_id, to_id):
+        for edge in self.edges:
+            edge.marked = False
         nx_graph = self.to_networkx()
         paths = nx.all_simple_paths(nx_graph, from_id, to_id)
-        edge_paths = []
+        # Create backpropagation graph based on the paths
         for path in paths:
-            edge_path = []
-            for i in range(1, len(path)):
-                edge = self.get_edge(path[-(i+1)],path[-i])
+            for i in range(len(path)-1):
+                edge = nx_graph[path[i]][path[i+1]]["edge"]
                 edge.marked = True
-                edge_path.append(edge)
-            edge_paths.append(edge_path)
-        return edge_paths
     
     def reset_grads(self):
         for node in self.nodes:
@@ -151,3 +155,11 @@ class Graph:
                 node.reset_grad()
             except:
                 pass
+
+    def clear(self):
+        for edge in self.edges:
+            del edge
+        for node in self.nodes:
+            del node
+        self.edges = []
+        self.nodes = []

@@ -61,14 +61,6 @@ class Node(AbstractNode):
     def accumulate_grad(self, value):
         import numpy as np
         if self.grad is None:
-            if type(value) == np.ndarray:
-                print(f"Accumulating gradient for {self.name}: {np.shape(value)}")
-            else:
-                print(f"Accumulating gradient for {self.name}: {value}")
             self.grad = value
         else:
-            if type(value) == np.ndarray:
-                print(f"Accumulating gradient for {self.name}: {np.shape(self.grad)} + {np.shape(value)}")
-            else:
-                print(f"Accumulating gradient for {self.name}: {self.grad} + {value}")
             self.grad += value

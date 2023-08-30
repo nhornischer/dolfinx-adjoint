@@ -32,10 +32,13 @@ class NewtonSolver(nls.petsc.NewtonSolver):
                 del kwargs["version"]
             else:
                 version = 1
+
             function_node = graph.Node(args[0], version = version, name = args[0].name)
             _graph = kwargs["graph"]
             del kwargs["graph"]
             _graph.add_node(function_node)
+
+            function_node.recompute = lambda : super().solve(*args, **kwargs)
 
             solver_node = _graph.get_node(id(self))
             function_edge = graph.Edge(solver_node, function_node)
@@ -46,4 +49,3 @@ class NewtonSolver(nls.petsc.NewtonSolver):
             output = super().solve(*args, **kwargs)
 
         return output
-
