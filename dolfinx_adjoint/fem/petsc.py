@@ -230,12 +230,10 @@ def AdjointProblemSolver(A, b, x : fem.Function, bcs = None):
 
     _b = PETSc.Vec().createWithArray(b)
     if bcs is not None:
-        new_array = _b.array_w.copy()
-        for bc in bcs:
-            for dofs in bc.dof_indices()[0]:
-                new_array[int(dofs)] = 0.0
-        _b.array_w = new_array
-
+        with _b.localForm() as _b_local:
+            for bc in bcs:
+                dofs = bc.dof_indices()[0].astype(np.int32)
+                _b_local[dofs] = 0.0
 
     _solver.setType("preonly")
     _solver.getPC().setType("lu")
