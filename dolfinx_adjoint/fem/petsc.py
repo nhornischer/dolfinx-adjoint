@@ -233,7 +233,7 @@ def AdjointProblemSolver(A, b, x : fem.Function, bcs = None):
         with _b.localForm() as _b_local:
             for bc in bcs:
                 dofs = bc.dof_indices()[0].astype(np.int32)
-                _b_local[dofs] = 0.0
+                _b_local.array_w[dofs] = 0.0
 
     _solver.setType("preonly")
     _solver.getPC().setType("lu")
