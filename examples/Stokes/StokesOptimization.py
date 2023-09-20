@@ -104,8 +104,8 @@ if mesh_comm.rank == model_rank:
     gmsh.model.mesh.field.setNumber(2, "IField", 1)
     gmsh.model.mesh.field.setNumber(2, "LcMin", 0.2)
     gmsh.model.mesh.field.setNumber(2, "LcMax", 0.8)
-    gmsh.model.mesh.field.setNumber(2, "DistMin", 0.1*r)
-    gmsh.model.mesh.field.setNumber(2, "DistMax", 0.5*r)
+    gmsh.model.mesh.field.setNumber(2, "DistMin", 0.3*r)
+    gmsh.model.mesh.field.setNumber(2, "DistMax", r)
     gmsh.model.mesh.field.add("Min", 5)
     gmsh.model.mesh.field.setNumbers(5, "FieldsList", [2])
     gmsh.model.mesh.field.setAsBackgroundMesh(5)
@@ -155,9 +155,10 @@ dim = len(dofs_obstacle[0])
 
 g_vis_function = fem.Function(V_u, name="g_vis")
 xdmf = io.XDMFFile(MPI.COMM_WORLD, "stokes_optimization.xdmf", "w")
+convergence_data = []
 xdmf.write_mesh(mesh)
 vis_index = 0
-def forward(g_array):
+def forward(g_array, plot = False):
     global vis_index
     graph_.clear()
     
@@ -187,29 +188,43 @@ def forward(g_array):
     solver.solve(up, graph=graph_)   
 
     # Define the objective function
-    J_form  = 0.5 * ufl.inner(ufl.grad(u), ufl.grad(u)) * ufl.dx + alpha / 2 * ufl.inner(g, g) * dObs
+    J_form  = 0.5 * ufl.inner(ufl.grad(u), ufl.grad(u)) * ufl.dx + 0.5 * alpha * ufl.inner(g, g) * dObs
 
     J = fem.assemble_scalar(fem.form(J_form, graph=graph_), graph=graph_)
-    u, p = up.split()
-    u.name = "velocity"
-    p.name = "pressure"
-    xdmf.write_function(u, vis_index)
-    xdmf.write_function(p, vis_index)
-    xdmf.write_function(g, vis_index)
+    if plot:
+        u, p = up.split()
+        u.name = "velocity"
+        p.name = "pressure"
+        xdmf.write_function(u, vis_index)
+        xdmf.write_function(p, vis_index)
+        xdmf.write_function(g, vis_index)
+        convergence_data.append(J)
+        vis_index += 1
 
     dJdg = graph_.backprop(id(J), id(g))
     gradient = dJdg.array[g_boundary_indices]
-    vis_index += 1
+    
     print(J)
     return J, gradient
 xdmf.close()
+
+forward_callback = lambda g_array: forward(g_array, plot = True)
 
 g_array = np.zeros(dim)
 
 from scipy.optimize import minimize
 
-res = minimize(forward, g_array, method = "BFGS", jac=True, tol=1e-8,
+forward(g_array, plot = True)
+
+res = minimize(forward, g_array, method = "BFGS", jac=True, tol=1e-8,callback=forward_callback,
                  options={"gtol": 1e-8, 'disp':True, 'maxiter':100})
 
-J, dJ = forward(res.x)
-print(J)
+import matplotlib.pyplot as plt
+plt.figure()
+plt.plot(convergence_data)
+plt.xlabel("Iteration")
+plt.ylabel("Objective function")
+plt.grid(True)
+plt.savefig("stokes_optimization_convergence.pdf")
+
+plt.show()

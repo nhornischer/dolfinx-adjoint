@@ -156,6 +156,10 @@ class Graph:
             except:
                 pass
 
+    def recalculate(self):
+        for node in self.nodes:
+            node()
+
     def clear(self):
         for edge in self.edges:
             del edge

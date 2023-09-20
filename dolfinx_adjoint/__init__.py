@@ -14,3 +14,4 @@ from . import nls
 from .edge import *
 from .node import *
 from .graph import *
+from .active_subspace import ASFEniCSx as AS

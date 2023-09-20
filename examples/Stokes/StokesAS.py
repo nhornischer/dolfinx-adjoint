@@ -104,8 +104,8 @@ if mesh_comm.rank == model_rank:
     gmsh.model.mesh.field.setNumber(2, "IField", 1)
     gmsh.model.mesh.field.setNumber(2, "LcMin", 0.2)
     gmsh.model.mesh.field.setNumber(2, "LcMax", 0.8)
-    gmsh.model.mesh.field.setNumber(2, "DistMin", 0.1*r)
-    gmsh.model.mesh.field.setNumber(2, "DistMax", 0.5*r)
+    gmsh.model.mesh.field.setNumber(2, "DistMin", 0.3*r)
+    gmsh.model.mesh.field.setNumber(2, "DistMax", r)
     gmsh.model.mesh.field.add("Min", 5)
     gmsh.model.mesh.field.setNumbers(5, "FieldsList", [2])
     gmsh.model.mesh.field.setAsBackgroundMesh(5)
@@ -138,7 +138,7 @@ vq = ufl.TestFunction(V)
 (v, q) = ufl.split(vq)
 # Boundary conditions   
 h = fem.Function(V_u, name="f")                                     # Inflow Dirichlet boundary condition
-h.interpolate(lambda x: np.stack((x[1]*(10-x[1])/10, 0.0* x[0])))
+h.interpolate(lambda x: np.stack((x[1]*(10-x[1])/25, 0.0* x[0])))
 noslip = fem.Function(V_u, name="noslip")                           # No-slip homogenous Dirichlet boundary condition at the walls for the velocity
 outflow = fem.Function(V_p, name="outflow")                         # Outflow homogeneous Dirichlet boundary condition for the pressure
 outflow.interpolate(lambda x: 0.0*x[0]+0.0)
@@ -210,46 +210,26 @@ k = 1                               # Number of eigenvalues of interest
 
 M = int(alpha * k * np.log(m)) 
 M = 100
-k = 2
+k = 10
 
 # Sample the parameter space
-f_array = np.random.uniform(-1, 1, (M, m))
+bounds = np.array([[-0.1, 0.1]] * m)
+f_array = np.random.uniform(bounds[0,0], bounds[0,1], (M, m))
 
-gradients = np.zeros([M, m])
-J_values = np.zeros(M)
+asfenicsx = AS(M, m,k, forward, f_array, bounds)
+asfenicsx.evaluate_gradients()
 
-for i in range(M):
-    print(f"{i}/{M}", end='\r')
-    J_values[i], gradients[i, :] = forward(f_array[i])
-print("")
+asfenicsx.estimation()
 
-# Compute the active subspace
+asfenicsx.plot_eigenvalues(filename="stokes_AS_eigenvalues.pdf")
 
-weights = np.ones((M, 1))/M
+# Plot important eigenvector
+g_vis = fem.Function(V_u, name="g")
+g_vis.vector.array[g_boundary_indices] = asfenicsx._eigenvectors[:,0]
 
-covariance = np.dot(gradients.T, gradients * weights)
-
-e, W = np.linalg.eigh(covariance)
-e = abs(e)
-idx = np.argsort(e)[::-1]
-e = e[idx]
-W = W[:,idx]
-normalization = np.sign(W[0,:])
-normalization[normalization == 0] = 1
-W = W * normalization
-
-import matplotlib.pyplot as plt
-plt.figure()
-plt.plot(e[:k], 'o')
-plt.savefig("Stokes_eigenvalues.png")
-plt.show()
-
-xdmf = io.XDMFFile(MPI.COMM_WORLD, "StokesAS.xdmf", "w")
+xdmf = io.XDMFFile(MPI.COMM_WORLD, "stokes_AS.xdmf", "w")
 xdmf.write_mesh(mesh)
-g_vis = fem.Function(V_u, name="f_vis")
-# Show possible important directions
-for i in range(k):
-    for j, index in enumerate(g_boundary_indices):
-        g_vis.vector.array[index] = W[j,i]
-    xdmf.write_function(g_vis, i)
+
+xdmf.write_function(g_vis, 0)
 xdmf.close()
+

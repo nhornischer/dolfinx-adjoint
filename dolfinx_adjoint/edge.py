@@ -56,3 +56,7 @@ class Edge:
     
     def __str__(self):
         return f"{str(self.predecessor)} -> {str(self.successor)}"
+    
+    def __del__(self):
+        del self.input_value
+        del self

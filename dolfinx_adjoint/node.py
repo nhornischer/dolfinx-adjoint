@@ -32,9 +32,16 @@ class AbstractNode:
 
     def get_gradFuncs(self):
         return self.gradFuncs
+    
+    def __call__(self, *args, **kwargs):
+        # This function recomputes the node with the given arguments
+        pass
 
     def __str__(self):
         return str(self.name)
+    
+    def __del__(self):
+        del self
 
 class Node(AbstractNode): 
     """
@@ -64,3 +71,8 @@ class Node(AbstractNode):
             self.grad = value
         else:
             self.grad += value
+
+    def __del__(self):
+        del self.data
+        del self.grad
+        return super().__del__()

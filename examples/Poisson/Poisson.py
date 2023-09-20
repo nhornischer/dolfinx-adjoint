@@ -91,7 +91,10 @@ J = fem.assemble_scalar(fem.form(J_form, graph = graph_), graph = graph_)
 # Main-Method
 if __name__ == "__main__":
     graph_.visualise()
-
+    print("J(u)_1 = ", J)
+    g.interpolate(lambda x: 2 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))
+    graph_.recalculate()
+    print("J(u)_2 = ", J)
 
     dJdf = graph_.backprop(id(J), id(f))
     dJdnu = graph_.backprop(id(J), id(nu))

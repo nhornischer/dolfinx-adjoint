@@ -105,8 +105,8 @@ if mesh_comm.rank == model_rank:
     gmsh.model.mesh.field.setNumber(2, "IField", 1)
     gmsh.model.mesh.field.setNumber(2, "LcMin", 0.2)
     gmsh.model.mesh.field.setNumber(2, "LcMax", 0.8)
-    gmsh.model.mesh.field.setNumber(2, "DistMin", 0.1*r)
-    gmsh.model.mesh.field.setNumber(2, "DistMax", 0.5*r)
+    gmsh.model.mesh.field.setNumber(2, "DistMin", 0.3*r)
+    gmsh.model.mesh.field.setNumber(2, "DistMax", r)
     gmsh.model.mesh.field.add("Min", 5)
     gmsh.model.mesh.field.setNumbers(5, "FieldsList", [2])
     gmsh.model.mesh.field.setAsBackgroundMesh(5)
@@ -137,7 +137,7 @@ h.interpolate(lambda x: np.stack((x[1]*(10-x[1])/25, 0.0* x[0])))
 g = fem.Function(V_u, name="g", graph=graph_)             # Circle Dirichlet boundary condition
 noslip = fem.Function(V_u, name="noslip")        # No-slip homogenous Dirichlet boundary condition at the walls for the velocity
 outflow = fem.Function(V_p, name="outflow")       # Outflow homogeneous Dirichlet boundary condition for the pressure
-outflow.interpolate(lambda x: 0.0*x[0]+1.0)
+outflow.interpolate(lambda x: 0.0*x[0]+0.0)
 
 dofs_walls = fem.locate_dofs_topological((V.sub(0), V_u), 1, ft.indices[ft.values == wall_marker])
 dofs_inflow = fem.locate_dofs_topological((V.sub(0), V_u), 1, ft.indices[ft.values == inlet_marker])

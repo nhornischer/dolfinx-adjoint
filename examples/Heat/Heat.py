@@ -36,11 +36,11 @@ from petsc4py.PETSc import ScalarType
 
 import ufl
 
-domain = mesh.create_unit_square(MPI.COMM_WORLD, 50, 50, mesh.CellType.triangle)
+domain = mesh.create_unit_square(MPI.COMM_WORLD, 32, 32, mesh.CellType.triangle)
 V = fem.FunctionSpace(domain, ("CG", 1))
 
-dt = 0.001
-T = 0.002
+dt = 0.01
+T = 0.3
 """
 Create true data set
 """

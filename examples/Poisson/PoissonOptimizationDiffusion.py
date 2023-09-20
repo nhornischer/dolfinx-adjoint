@@ -49,12 +49,8 @@ import ufl
 graph_ = graph.Graph()
 
 # Create mesh and define function space
-domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, mesh.CellType.triangle)
+domain = mesh.create_unit_square(MPI.COMM_WORLD, 32, 32, mesh.CellType.triangle)
 V = fem.FunctionSpace(domain, ("CG", 1))  
-
-# Define profile g
-g = fem.Function(V, name="g")                                   
-g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))   
 
 # Define the boundary and the boundary conditions
 domain.topology.create_connectivity(domain.topology.dim -1, domain.topology.dim)
@@ -67,90 +63,90 @@ boundary_dofs_R = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[0], 1.0)
 boundary_dofs_T = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[1], 1.0))
 boundary_dofs_B = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[1], 0.0))
 
+v = ufl.TestFunction(V)
+f = fem.Function(V, name="f")  
+f.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))   
+
 bcs = [fem.dirichletbc(uD, boundary_dofs_L),
     fem.dirichletbc(uD, boundary_dofs_R),
     fem.dirichletbc(uD, boundary_dofs_T),
     fem.dirichletbc(uD, boundary_dofs_B)]
 
-v = ufl.TestFunction(V)
-nu = fem.Constant(domain, ScalarType(1.0), name = "ν") 
+f_vis = fem.Function(V, name="f_vis")
+u_vis = fem.Function(V, name="u_vis")
+xdmf = io.XDMFFile(MPI.COMM_WORLD, "poisson_opt_u.xdmf", "w")
+vis_index = 0
 
-alpha = fem.Constant(domain, ScalarType(1e-6), name = "α")      
+# Define the basis functions and parameters
+g = fem.Function(V, name="g")                                                       
+nu = fem.Constant(domain, ScalarType(1.0), name = "ν")  
+        
+# Define the variational form and the residual equation
+a = nu * ufl.inner(ufl.grad(g), ufl.grad(v)) * ufl.dx
+L = f * v * ufl.dx
+F = a - L
 
-            
-def fun(f_array):
+# Define the problem solver and solve it
+problem = fem.petsc.NonlinearProblem(F, g, bcs=bcs)             
+solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)          
+solver.solve(g)
+
+convergence_data = []
+
+xdmf.write_mesh(domain)
+def fun(diffusion_coefficient, plot = False):
+    global vis_index
     graph_.clear()
 
     # Define the basis functions and parameters
-    uh = fem.Function(V, name="uₕ", graph=graph_)                             
-    
-    f = fem.Function(V, name="f", graph=graph_)                               
+    uh = fem.Function(V, name="uₕ", graph=graph_)                                                       
+    nu = fem.Constant(domain, ScalarType(1.0), name = "ν", graph=graph_)  
 
+    nu.value = diffusion_coefficient
+            
     # Define the variational form and the residual equation
     a = nu * ufl.inner(ufl.grad(uh), ufl.grad(v)) * ufl.dx
     L = f * v * ufl.dx
     F = a - L
 
-    f.vector.array[:] = f_array
     # Define the problem solver and solve it
     problem = fem.petsc.NonlinearProblem(F, uh, bcs=bcs, graph = graph_)             
     solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph = graph_)          
     solver.solve(uh, graph = graph_)    
     
     # Define the objective function
-    J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + 0.5 * alpha * f * f * ufl.dx
+    J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx
                                                   
-    J = fem.assemble_scalar(fem.form(J_form, graph = graph_), graph = graph_)                       
-    dJdf = graph_.backprop(id(J), id(f))
-    return J, dJdf.array[:]
+    J = fem.assemble_scalar(fem.form(J_form, graph = graph_), graph = graph_)
+    if plot:                       
+        xdmf.write_function(uh, vis_index)
+        vis_index += 1
+        convergence_data.append(J)
+    dJdf = graph_.backprop(id(J), id(nu))
+    print(J)
+    
+    return J, dJdf
 
-f_initial = fem.Function(V, name="f_initial")
+xdmf.close()
 
-m = len(f_initial.vector.array)     # Number of parameters
-alpha = 2                           # Oversampling factor (originally 2)
-k = m / 3                           # Number of eigenvalues of interest
+fun_callback = lambda x: fun(x, plot = True)
 
-M = int(alpha * k * np.log(m)) 
-M = 300
-k = 400
+nu_initial = fem.Constant(domain, ScalarType(2.0), name = "ν")
 
-# Sample the parameter space
-f_array = np.random.uniform(-1, 1, (M, m))
+initial_values = nu_initial.value
 
-gradients = np.zeros([M, m])
-J_values = np.zeros(M)
+from scipy.optimize import minimize
 
-for i in range(M):
-    print(f"{i}/{M}", end='\r')
-    J_values[i], gradients[i, :] = fun(f_array[i])
-print("")
+fun_callback(initial_values)
 
-# Compute the active subspace
-
-weights = np.ones((M, 1))/M
-
-covariance = np.dot(gradients.T, gradients * weights)
-
-e, W = np.linalg.eigh(covariance)
-e = abs(e)
-idx = np.argsort(e)[::-1]
-e = e[idx]
-W = W[:,idx]
-normalization = np.sign(W[0,:])
-normalization[normalization == 0] = 1
-W = W * normalization
+res = minimize(fun, initial_values, method = "BFGS", jac=True, tol=1e-10,
+                 options={"gtol": 1e-9, 'disp':True}, callback=fun_callback)
 
 import matplotlib.pyplot as plt
 plt.figure()
-plt.plot(e[:k], 'o')
-plt.savefig("Poisson_eigenvalues.png")
+plt.semilogy(convergence_data)
+plt.xlabel("Iteration")
+plt.ylabel("Objective function")
+plt.grid(True)
+plt.savefig("PoissonOptimizationDiffusion_convergence.pdf")
 plt.show()
-
-xdmf = io.XDMFFile(MPI.COMM_WORLD, "PoissonAS.xdmf", "w")
-xdmf.write_mesh(domain)
-f_vis = fem.Function(V, name="f_vis")
-# Show possible important directions
-for i in range(310):
-    f_vis.vector.array[:] = W[:,i]
-    xdmf.write_function(f_vis, i)
-xdmf.close()
