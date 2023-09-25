@@ -35,7 +35,7 @@ import ufl
 # Every function that is created with a graph object will be added to the graph
 # and its gradient will be computed automatically. 
 
-graph_ = graph.Graph()
+graph_ = Graph()
 
 # Define mesh and finite element space
 domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, mesh.CellType.triangle)
