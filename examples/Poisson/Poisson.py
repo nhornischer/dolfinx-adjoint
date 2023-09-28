@@ -94,7 +94,7 @@ if __name__ == "__main__":
     print("J(u)_1 = ", J)
     g.interpolate(lambda x: 2 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))
     graph_.recalculate()
-    print("J(u)_2 = ", J)
+    print("J(u)_2 = ", graph_.get_node(id(J)).get_object())
 
     dJdf = graph_.backprop(id(J), id(f))
     dJdnu = graph_.backprop(id(J), id(nu))

@@ -6,6 +6,7 @@ The graph is constructed using the networkx library and is a directed graph.
 import networkx as nx
 from .node import Node, AbstractNode
 from .edge import Edge
+from .operation import Operation
 
 import ctypes
 
@@ -13,10 +14,14 @@ class Graph:
     def __init__(self):
         self.nodes = []
         self.edges = []
+        self.operations = []
 
     def add_node(self, node : Node):
         self.nodes.append(node)
     
+    def add_operation(self, operation : Operation):
+        self.operations.append(operation)
+
     def add_edge(self, edge : Edge):
         self.edges.append(edge)
 
@@ -82,7 +87,7 @@ class Graph:
     def __str__(self):
         return f"Graph object with {len(self.nodes)} nodes and {len(self.edges)} edges."
     
-    def to_networkx(self):
+    def to_networkx(self, vis = False):
         nx_graph = nx.DiGraph()
         for node in self.nodes:
             nx_graph.add_node(id(node), name = node.name, node = node)
@@ -90,7 +95,13 @@ class Graph:
                 nx_graph.nodes[id(node)]["color"] = 'pink'
             else:
                 nx_graph.nodes[id(node)]["color"] = 'lightblue'
-
+        if vis:
+            for operation in self.operations:
+                nx_graph.add_node(id(operation), name = str(operation), node = operation)
+                nx_graph.nodes[id(operation)]["color"] = 'lightgreen'
+                for input in operation.inputs:
+                    nx_graph.add_edge(id(input), id(operation), tag = "", color = 'lightgreen', edge = None)
+                nx_graph.add_edge(id(operation), id(operation.output), tag = "", color = 'lightgreen', edge = None)
         for edge in self.edges:
             if not edge.__class__.__name__ == "Edge":
                 tag = edge.__class__.__name__
@@ -100,14 +111,14 @@ class Graph:
                 color = 'black'
             else:
                 color = 'grey'
-            nx_graph.add_edge(id(edge.predecessor), id(edge.successor), tag = tag, color = color, edge = edge)
+            nx_graph.add_edge(id(edge.successor), id(edge.predecessor), tag = tag, color = color, edge = edge)
         return nx_graph
     
     def visualise(self, filename = "graph.pdf", style = "planar"):
         """Visualise the graph"""
         import matplotlib.pyplot as plt
         plt.figure(figsize=(10,8))
-        nx_graph = self.to_networkx()
+        nx_graph = self.to_networkx(vis = True)
         labels = nx.get_node_attributes(nx_graph, "name")
         edge_labels = nx.get_edge_attributes(nx_graph, "tag")
         edge_colors = nx.get_edge_attributes(nx_graph, "color")
@@ -157,8 +168,8 @@ class Graph:
                 pass
 
     def recalculate(self):
-        for node in self.nodes:
-            node()
+        for operation in self.operations:
+            operation()
 
     def clear(self):
         for edge in self.edges:

@@ -3,6 +3,7 @@ class AbstractNode:
     def __init__(self, object, version = 0, **kwargs):
         self.id = id(object)
         self.version = version
+        self.object = object
         if version != 0:
             object.version = version
         self.gradFuncs = []
@@ -10,6 +11,9 @@ class AbstractNode:
             self._name = kwargs["name"]
         else:
             self._name = str(object.__class__.__name__)
+
+    def set_object(self, object):
+        self.object = object
 
     @property
     def name(self):
@@ -54,6 +58,8 @@ class Node(AbstractNode):
         self.grad = None
 
     def get_object(self):
+        if hasattr(self, "object"):
+            return self.object
         return ctypes.cast(self.id, ctypes.py_object).value
 
     def set_grad(self, value):

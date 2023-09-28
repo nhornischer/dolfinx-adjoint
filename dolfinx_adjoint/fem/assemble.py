@@ -15,6 +15,10 @@ def assemble_scalar(*args, **kwargs):
 
         # Create edge between form and assemble
         form_node = _graph.get_node(id(args[0]))
+
+        operation_node = AssembleScalarOp(form_node, assemble_node)
+        _graph.add_operation(operation_node)
+
         assemble_edge = graph.Edge(form_node, assemble_node)
         assemble_node.set_gradFuncs([assemble_edge])
 
@@ -23,3 +27,10 @@ def assemble_scalar(*args, **kwargs):
         _graph.add_edge(assemble_edge)
 
     return output
+
+class AssembleScalarOp(graph.Operation):
+    def __call__(self):
+        inputs = [input.object for input in self.inputs]
+        output = fem.assemble_scalar(*inputs)
+        self.output.object = output
+        return output
