@@ -7,7 +7,9 @@ import petsc4py as PETSc
 
 import dolfinx_adjoint.graph as graph
 
-class NonlinearProblem(fem.petsc.NonlinearProblem):
+from dolfinx.fem.petsc import NonlinearProblem as NonlinearProblemBase
+
+class NonlinearProblem(NonlinearProblemBase):
     def __init__(self, *args, **kwargs):
         if not "graph" in kwargs:
             super().__init__(*args, **kwargs)
@@ -19,7 +21,7 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
             F_form = args[0]
             u = args[1]
 
-            problem_node = graph.AbstractNode(self)
+            problem_node = NonlinearProblemNode(self, F_form, u, **kwargs)
             _graph.add_node(problem_node)
 
             u_node = _graph.get_node(id(u))
@@ -54,32 +56,19 @@ class NonlinearProblem(fem.petsc.NonlinearProblem):
                         problem_node.append_gradFuncs(bc_edge)
                         bc_edge.set_next_functions(bc_node.get_gradFuncs())
 
+class NonlinearProblemNode(graph.AbstractNode):
+    def __init__(self, object, F : ufl.form.Form, u : fem.Function, **kwargs):
+        super().__init__(object)
+        self.F = F
+        self.u = u
+        self.kwargs = kwargs
+
+        self._name = "NonlinearProblem"
+
+    def __call__(self):
+        self.object = NonlinearProblem(self.F, self.u, self.kwargs)
+
 class NonlinearProblem_Coefficient_Edge(graph.Edge):
-    def calculate_tlm(self):
-        # Extract variables from contextvariable ctx
-        F, u, m, bcs = self.ctx
-
-        # Construct the Jacobian J = ∂F/∂u
-        V = u.function_space
-        du = ufl.TrialFunction(V)
-        J = ufl.derivative(F, u, du)
-        J = fem.assemble_matrix(fem.form(J), bcs = bcs)
-        J.finalize()
-        
-        # Calculate ∂F/∂m
-        dFdm = ufl.derivative(F, m)
-        dFdm = fem.assemble_matrix(fem.form(dFdm))
-        dFdm = apply_homogenized_boundary(dFdm, bcs)
-
-        # Solve for ∂u/∂m = J⁻¹ ∂F/∂m with a sparse linear solver
-        shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
-        sparse_J = sps.csr_matrix((J.data, J.indices, J.indptr), shape=shape)
-        dudm = sps.linalg.spsolve(sparse_J, -dFdm.to_dense())
-
-        self.operator = dudm
-
-        return self.input_value @ dudm
-    
     def calculate_adjoint(self):
         # Extract variables from contextvariable ctx
         F, u_node, m, bcs, _graph = self.ctx
@@ -107,38 +96,6 @@ class NonlinearProblem_Coefficient_Edge(graph.Edge):
         return dFdm.transpose() * adjoint_solution.vector
     
 class NonlinearProblem_Constant_Edge(graph.Edge):
-    def calculate_tlm(self):
-        
-        # Extract variables from contextvariable ctx
-        F, u, m, bcs = self.ctx
-
-        # Construct the Jacobian J = ∂F/∂u
-        V = u.function_space
-        du = ufl.TrialFunction(V)
-        J = ufl.derivative(F, u, du)
-        J = fem.assemble_matrix(fem.form(J), bcs = bcs)
-        J.finalize()
-
-        # Create a function based on the constant in order to use ufl.derivative to
-        # calculate ∂F/∂m
-        domain = m.domain
-        DG0 = fem.FunctionSpace(domain, ("DG", 0))
-        function = fem.Function(DG0, name = "constant")
-        function.vector.array[:] = m.c
-        replaced_form = ufl.replace(F, {m: function})
-        dFdm = ufl.derivative(replaced_form, function)
-        dFdm = fem.assemble_vector(fem.form(dFdm)).array[:]
-        dFdm = apply_homogenized_boundary(dFdm, bcs)
-
-        # Solve for ∂u/∂m = J⁻¹ ∂F/∂m with a sparse linear solver
-        shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
-        sparse_J = sps.csr_matrix((J.data, J.indices, J.indptr), shape=shape)
-        dudm = sps.linalg.spsolve(sparse_J, -dFdm)
-
-        self.operator = dudm
-
-        return self.input_value @ dudm
-    
     def calculate_adjoint(self):
 
         # Extract variables from contextvariable ctx
@@ -171,32 +128,6 @@ class NonlinearProblem_Constant_Edge(graph.Edge):
         return  adjoint_solution.vector.dot(dFdm)
     
 class NonlinearProblem_Boundary_Edge(graph.Edge):
-    def calculate_tlm(self):
-
-        # Extract variables from contextvariable ctx
-        F, u, bcs, dFdbc_form = self.ctx
-            
-        # Construct the Jacobian J = ∂F/∂u
-        V = u.function_space
-        du = ufl.TrialFunction(V)
-        J = ufl.derivative(F, u, du)
-        J = fem.assemble_matrix(fem.form(J), bcs = bcs)
-        J.finalize()
-
-        # ∂F/∂m = dFdbc defined in the nonlinear problem as a fem.Form
-        dFdbc = fem.assemble_matrix(dFdbc_form)
-        dFdbc.finalize()
-        dFdbc = apply_homogenized_boundary(dFdbc.to_dense(), bcs)
-
-        # Solve for ∂u/∂m = J⁻¹ ∂F/∂m with a sparse linear solver
-        shape = (V.dofmap.index_map.size_global, V.dofmap.index_map.size_global)
-        sparse_J = sps.csr_matrix((J.data, J.indices, J.indptr), shape=shape)
-        dudm = sps.linalg.spsolve(sparse_J, -dFdbc.to_dense())
-
-        self.operator = dudm
-
-        return self.input_value @ dudm
-    
     def calculate_adjoint(self):
 
         # Extract variables from contextvariable ctx
@@ -222,19 +153,15 @@ class NonlinearProblem_Boundary_Edge(graph.Edge):
         return dFdbc.transpose() * adjoint_solution.vector
 
 def AdjointProblemSolver(A, b, x : fem.Function, bcs = None):
-    from dolfinx import cpp as _cpp
+    from dolfinx import la
     from petsc4py import PETSc
-    _x = _cpp.la.petsc.create_vector_wrap(x.x)
+    _x = la.create_petsc_vector_wrap(x.x)
     _solver = PETSc.KSP().create(x.function_space.mesh.comm)
     _solver.setOperators(A)
 
     _b = PETSc.Vec().createWithArray(b)
-    if bcs is not None:
-        new_array = _b.array_w.copy()
-        for bc in bcs:
-            for dofs in bc.dof_indices()[0]:
-                new_array[int(dofs)] = 0.0
-        _b.array_w = new_array
+    from dolfinx.fem.petsc import set_bc
+    set_bc(_b, bcs, scale=0.0)
 
     _solver.setType("preonly")
     _solver.getPC().setType("lu")
@@ -245,4 +172,5 @@ def AdjointProblemSolver(A, b, x : fem.Function, bcs = None):
     opts["ksp_error_if_not_converged"] = 1
     _solver.setFromOptions()
     _solver.solve(_b, _x)
+
     return x

@@ -7,10 +7,12 @@ import dolfinx_adjoint.graph as graph
 def dirichletbc(*args, map = None, **kwargs):
     if not "graph" in kwargs:
         output = fem.dirichletbc(*args, **kwargs)
+        # output.dof_indices = args[1]
     else:
         _graph = kwargs["graph"]
         del kwargs["graph"]
         output = fem.dirichletbc(*args, **kwargs)
+        # output.dof_indices = args[1]
         dofs = args[1]
         values = args[0]
 

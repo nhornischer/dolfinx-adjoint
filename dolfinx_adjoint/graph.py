@@ -6,7 +6,6 @@ The graph is constructed using the networkx library and is a directed graph.
 import networkx as nx
 from .node import Node, AbstractNode
 from .edge import Edge
-from .operation import Operation
 
 import ctypes
 
@@ -14,13 +13,9 @@ class Graph:
     def __init__(self):
         self.nodes = []
         self.edges = []
-        self.operations = []
 
     def add_node(self, node : Node):
         self.nodes.append(node)
-    
-    def add_operation(self, operation : Operation):
-        self.operations.append(operation)
 
     def add_edge(self, edge : Edge):
         self.edges.append(edge)
@@ -42,6 +37,7 @@ class Graph:
             return node_versions[version]
         else: 
             return None
+        
     def remove_edge(self, edge : Edge):
         self.edges.remove(edge)
         for node in self.nodes:
@@ -58,7 +54,9 @@ class Graph:
         return None
     
     def print(self, detailed = False):
-        print("#"*64)
+        import os
+
+        print("#"*os.get_terminal_size().columns)
         print(f"Graph object with {len(self.nodes)} nodes and {len(self.edges)} edges.")
         print("Nodes:")
         for node in self.nodes:
@@ -67,6 +65,7 @@ class Graph:
         for edge in self.edges:
             print(f"\t{edge}")
         if not detailed:
+            print("#"*os.get_terminal_size().columns)
             return
         print("Gradient functions:")
         for node in self.nodes:
@@ -82,7 +81,7 @@ class Graph:
             print(f"\t{edge}")
             for next_function in edge.next_functions:
                 print(f"\t\t{next_function}")
-        print("#"*64)
+        print("#"*os.get_terminal_size().columns)
 
     def __str__(self):
         return f"Graph object with {len(self.nodes)} nodes and {len(self.edges)} edges."
@@ -114,11 +113,11 @@ class Graph:
             nx_graph.add_edge(id(edge.successor), id(edge.predecessor), tag = tag, color = color, edge = edge)
         return nx_graph
     
-    def visualise(self, filename = "graph.pdf", style = "planar"):
+    def visualise(self, filename = "graph.pdf", style = "planar", print_edge_labels = True):
         """Visualise the graph"""
         import matplotlib.pyplot as plt
         plt.figure(figsize=(10,8))
-        nx_graph = self.to_networkx(vis = True)
+        nx_graph = self.to_networkx(vis = False)
         labels = nx.get_node_attributes(nx_graph, "name")
         edge_labels = nx.get_edge_attributes(nx_graph, "tag")
         edge_colors = nx.get_edge_attributes(nx_graph, "color")
@@ -129,14 +128,19 @@ class Graph:
         elif style == "shell":
             nx.draw_shell(nx_graph, labels=labels, node_color = node_colors.values(),  edge_color = edge_colors.values(), with_labels=True)
             edge_pos = nx.shell_layout(nx_graph)
+        elif style == "random":
+            nx.draw_random(nx_graph, labels=labels, node_color = node_colors.values(),  edge_color = edge_colors.values(), with_labels=True)
+            edge_pos = nx.random_layout(nx_graph)
         else:
-            print("Given style is not implemented. Using spring layout")
+            if style != "spring":
+                print("Given style is not implemented. Using spring layout")
             nx.draw(nx_graph, labels=labels, node_color = node_colors.values(),  edge_color = edge_colors.values(), with_labels=True)
             edge_pos = nx.spring_layout(nx_graph)
-        nx.draw_networkx_edge_labels(nx_graph, pos=edge_pos, edge_labels=edge_labels)
+        if print_edge_labels:
+            nx.draw_networkx_edge_labels(nx_graph, pos=edge_pos, edge_labels=edge_labels)
         plt.savefig(filename)
     
-    def backprop(self, function_id, variable_id = None):
+    def backprop(self, function_id, variable_id = None, timing = False):
         self.reset_grads()
         function_node = self.get_node(function_id)
         if variable_id is not None:
@@ -145,9 +149,17 @@ class Graph:
         else:
             for edge in self.edges:
                 edge.marked = True
+        if timing:
+            import time
+            start = time.time()
         grad_func = function_node.get_gradFuncs()[0]
         grad_func(1.0)
-        return self.get_node(variable_id).get_grad()
+        if variable_id is not None:
+            if timing:
+                end = time.time()
+                print(f"Backpropagation took {end-start} seconds")
+            return self.get_node(variable_id).get_grad()
+        
 
     def get_backpropagation_path(self, from_id, to_id):
         for edge in self.edges:
@@ -168,8 +180,8 @@ class Graph:
                 pass
 
     def recalculate(self):
-        for operation in self.operations:
-            operation()
+        for node in self.nodes:
+            node()
 
     def clear(self):
         for edge in self.edges:

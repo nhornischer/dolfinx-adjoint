@@ -1,6 +1,6 @@
-from dolfinx import fem
+from dolfinx import fem, la
+import typing
 import dolfinx_adjoint.graph as graph
-
 
 class Function(fem.Function):
     def __init__(self, *args, **kwargs):
@@ -21,27 +21,24 @@ class Function(fem.Function):
             function_node = graph.Node(self, name=self.name)
             _graph.add_node(function_node)
 
-    def copy(self, *args, **kwargs):
-        if not "name" in kwargs:
-            kwargs["name"] = "f_copy"
-        if not "graph" in kwargs:
-            return Function(self.function_space, type(self.x)(self.x), **kwargs)
-        else:
+    def copy(self, **kwargs):
+        result = Function(self.function_space, la.Vector(type(self.x._cpp_object)(self.x._cpp_object)))
+        if "name" in kwargs:
+            result.name = kwargs["name"]
+        if "graph" in kwargs:
             _graph = kwargs["graph"]
             del kwargs["graph"]
-            output = Function(self.function_space, type(self.x)(self.x), **kwargs)
-            copy_node = graph.Node(output, name=output.name)
-            _graph.add_node(copy_node)
+            function_node = graph.Node(result, name=result.name)
+            _graph.add_node(function_node)
 
-            # Create a standard edge between the function at its copy since they are both identical
-            original_node = _graph.get_node(id(self))
-            copy_edge = graph.Edge(original_node, copy_node)
-            copy_edge.set_next_functions(original_node.get_gradFuncs())
-            copy_node.append_gradFuncs(copy_edge)
-
+            copied_node = _graph.get_node(id(self))
+            copy_edge = graph.Edge(copied_node, function_node)
+            function_node.set_gradFuncs([copy_edge])
             _graph.add_edge(copy_edge)
-            return output
-        
+            copy_edge.set_next_functions(copied_node.get_gradFuncs())
+
+        return result
+
     def assign(self, function, **kwargs):
         self.vector[:] = function.vector[:]
         if "graph" in kwargs:
@@ -59,7 +56,7 @@ class Function(fem.Function):
             assign_node.set_gradFuncs([assign_edge])
             _graph.add_edge(assign_edge)
             assign_edge.set_next_functions(function_node.get_gradFuncs())
-            
+                   
 
 class Constant(fem.Constant):
     def __init__(self, *args, **kwargs):
@@ -73,6 +70,8 @@ class Constant(fem.Constant):
             if "name" in kwargs:
                 name = kwargs["name"]
                 del kwargs["name"]
+            else:
+                name = "Constant"
             super().__init__(*args, **kwargs)
 
             kwargs = {"name": name}

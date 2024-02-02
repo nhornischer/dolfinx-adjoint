@@ -10,7 +10,7 @@ def form(*args, **kwargs):
         _graph = kwargs["graph"]
         del kwargs["graph"]
         output = fem.form(*args, **kwargs)
-        form_node = graph.AbstractNode(output)
+        form_node = FormNode(output, args[0])
         _graph.add_node(form_node)
 
         ufl_form = args[0]
@@ -35,25 +35,17 @@ def form(*args, **kwargs):
                 coefficient_edge.set_next_functions(constant_node.get_gradFuncs())
                 _graph.add_edge(coefficient_edge)
 
-        
-        operation_node = FormOp(dependecy_nodes, form_node, ctx=[ufl_form])
-        _graph.add_operation(operation_node)
                 
     return output
 
-class FormOp(graph.Operation):
-    def __init__(self, inputs : list or graph.Node, output : graph.Node, ctx):
-        if not isinstance(inputs, list):
-            inputs = [inputs]
-        self.inputs = inputs
-        self.output = output
-        self.ctx = ctx
+class FormNode(graph.AbstractNode):
+    def __init__(self, object, ufl_form : ufl.form.Form, **kwargs):
+        super().__init__(object)
+        self.ufl_form = ufl_form
+        self._name = "Form"
 
     def __call__(self):
-        ufl_form = self.ctx[0]
-        output = fem.form(ufl_form)
-        self.output.object = output
-        return output
+        self.object = fem.form(self.ufl_form)
 
 class Form_Coefficient_Edge(graph.Edge):
     def calculate_tlm(self):

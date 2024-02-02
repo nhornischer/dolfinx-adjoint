@@ -25,10 +25,13 @@ import scipy.sparse as sps
 
 from mpi4py import MPI
 import dolfinx
-from dolfinx import mesh, fem, io, nls
+from dolfinx import mesh, fem, nls
 from dolfinx_adjoint import *
 from petsc4py.PETSc import ScalarType
 import ufl 
+
+import os
+dir = os.path.dirname(__file__)
 
 # We first need to create a graph object to store the computational graph. 
 # This is done explicitly to maintain the guideline of FEniCSx.
@@ -36,7 +39,6 @@ import ufl
 # and its gradient will be computed automatically. 
 
 graph_ = Graph()
-
 # Define mesh and finite element space
 domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, mesh.CellType.triangle)
 V = fem.FunctionSpace(domain, ("CG", 1))                
@@ -72,10 +74,14 @@ boundary_dofs_R = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[0], 1.0)
 boundary_dofs_T = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[1], 1.0))
 boundary_dofs_B = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[1], 0.0))
 
+# Store all boundary dofs in one array for testing
+bc_dofs_total = np.concatenate([boundary_dofs_L, boundary_dofs_R, boundary_dofs_T, boundary_dofs_B])
+
 bcs = [fem.dirichletbc(uD_L, boundary_dofs_L, graph = graph_),
        fem.dirichletbc(uD_R, boundary_dofs_R),
        fem.dirichletbc(uD_T, boundary_dofs_T),
        fem.dirichletbc(uD_B, boundary_dofs_B)]
+
 # Define the problem solver and solve it
 problem = fem.petsc.NonlinearProblem(F, uh, bcs=bcs, graph = graph_)             
 solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph = graph_)          
@@ -86,16 +92,10 @@ g.interpolate(lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi
 # Define the objective function
 alpha = fem.Constant(domain, ScalarType(1e-6), name = "α")      
 J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + alpha * ufl.inner(f, f) * ufl.dx
-J = fem.assemble_scalar(fem.form(J_form, graph = graph_), graph = graph_)                       
+J = fem.assemble_scalar(fem.form(J_form, graph = graph_), graph = graph_) 
 
 # Main-Method
 if __name__ == "__main__":
-    graph_.visualise()
-    print("J(u)_1 = ", J)
-    g.interpolate(lambda x: 2 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1]))
-    graph_.recalculate()
-    print("J(u)_2 = ", graph_.get_node(id(J)).get_object())
-
     dJdf = graph_.backprop(id(J), id(f))
     dJdnu = graph_.backprop(id(J), id(nu))
     dJdbc = graph_.backprop(id(J), id(uD_L))
@@ -103,22 +103,20 @@ if __name__ == "__main__":
         print("J(u) = ", J)
         print("dJdnu = ", dJdnu)
         print("||dJ/df||_L2 = ", np.sqrt(np.dot(dJdf, dJdf)))
-    print("||dJ/dbc||_L2 = ", np.sqrt(np.dot(dJdbc, dJdbc)))
-
+        print("||dJ/dbc||_L2 = ", np.sqrt(np.dot(dJdbc, dJdbc)))
 
     # Visualise the results by saving them to a file as functions
     dJdf_func = fem.Function(W, name="dJdf")
     dJdf_func.vector.setArray(dJdf)
     dJdbc_func = fem.Function(V, name="dJdbc")
     dJdbc_func.vector.setArray(dJdbc)
-    with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "poisson_results.xdmf", "w") as xdmf:
+    with dolfinx.io.XDMFFile(MPI.COMM_WORLD, dir+"/poisson_results.xdmf", "w") as xdmf:
         xdmf.write_mesh(domain)
         xdmf.write_function(uh)
         xdmf.write_function(f)
         xdmf.write_function(g)
         xdmf.write_function(dJdf_func)
         xdmf.write_function(dJdbc_func)
-
 
 import unittest
 
@@ -159,9 +157,8 @@ class TestPoisson(unittest.TestCase):
         dJdf = fem.assemble_vector(fem.form(dJdf)).array
 
         # We now need to apply the boundary conditions to the rhs of the adjoint problem
-        for bc in bcs:
-            for dofs in bc.dof_indices()[0]:
-                dJdu[int(dofs)] = 0
+        for bc_dof in bc_dofs_total:
+                dJdu[int(bc_dof)] = 0
 
         adjoint_solution = np.linalg.solve(dFdu.transpose(), - dJdu.transpose())
         
@@ -213,9 +210,8 @@ class TestPoisson(unittest.TestCase):
         dFdu = fem.assemble_matrix(fem.form(dFdu), bcs=bcs).to_dense()
 
         # We now need to apply the boundary conditions to the rhs of the adjoint problem
-        for bc in bcs:
-            for dofs in bc.dof_indices()[0]:
-                dJdu[int(dofs)] = 0
+        for bc_dof in bc_dofs_total:
+                dJdu[int(bc_dof)] = 0
         
         adjoint_solution = np.linalg.solve(dFdu.transpose(), - dJdu.transpose())
 
@@ -266,9 +262,8 @@ class TestPoisson(unittest.TestCase):
         dFdbc = fem.assemble_matrix(problem._a).to_dense()
 
         # We now need to apply the boundary conditions to the rhs of the adjoint problem
-        for bc in bcs:
-            for dofs in bc.dof_indices()[0]:
-                dJdu[int(dofs)] = 0
+        for bc_dof in bc_dofs_total:
+                dJdu[int(bc_dof)] = 0
 
         adjoint_solution = np.linalg.solve(dFdu.transpose(), - dJdu.transpose())
         
@@ -284,4 +279,3 @@ class TestPoisson(unittest.TestCase):
         gradient_bc.vector.setArray(gradient)
 
         self.assertTrue(np.allclose(graph_.backprop(id(J), id(uD_L)), gradient_bc.vector.array[:]))
-

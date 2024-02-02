@@ -12,15 +12,18 @@ class AbstractNode:
         else:
             self._name = str(object.__class__.__name__)
 
-    def set_object(self, object):
-        self.object = object
-
     @property
     def name(self):
         if self.version != 0:
             return f"{self._name} [{str(self.version)}]"
         else:
             return str(self._name)
+        
+    def set_inputs(self, list):
+        self.inputs = list
+
+    def set_object(self, object):
+        self.object = object
 
     def set_gradFuncs(self, list):
         self.gradFuncs = list
@@ -37,6 +40,7 @@ class AbstractNode:
     def get_gradFuncs(self):
         return self.gradFuncs
     
+    
     def __call__(self, *args, **kwargs):
         # This function recomputes the node with the given arguments
         pass
@@ -45,6 +49,7 @@ class AbstractNode:
         return str(self.name)
     
     def __del__(self):
+        del self.object
         del self
 
 class Node(AbstractNode): 
