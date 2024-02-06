@@ -5,6 +5,29 @@ import scipy.sparse as sps
 import dolfinx_adjoint.graph as graph
 
 def dirichletbc(*args, map = None, **kwargs):
+    """OVERLOADS: :py:func:dolfinx.fem.dirichletbc.
+    Creates a representation of a Dirichlet boundary condition in 
+    
+    The overloaded function adds the functionality to keep track of the dependencies 
+    in the computational graph. The original functionality is kept.
+
+    Args:
+        args: Arguments to :py:func:dolfinx.fem.dirichletbc. 
+        kwargs: Keyword arguments to :py:func:dolfinx.fem.dirichletbc.
+        map : Defines the map between the function space of the boundary
+            condition and the function space of the problem.
+        graph: An additional keyword argument to specifier wheter the assemble
+            operation should be added to the graph. If not present, the original functionality
+            of dolfinx is used without any additional functionalities.
+    
+    Note:
+        The map is used to define the map between the function space of the boundary
+        condition and the function space of the problem. This is useful when the function
+        space of the boundary condition and the function space of the problem are different.
+        The map is stored as an array where the index is equivalent to the index in the correct
+        space and the value is the index in the wrong space.
+    
+    """
     if not "graph" in kwargs:
         output = fem.dirichletbc(*args, **kwargs)
         # output.dof_indices = args[1]

@@ -60,12 +60,9 @@ uD.interpolate(lambda x: 0.0 + 0.0 *x[0])
 tdim = domain.topology.dim
 fdim = tdim - 1
 domain.topology.create_connectivity(fdim, tdim)
-boundary_facets = mesh.exterior_facet_indices(domain.topology)
-boundary_dofs = fem.locate_dofs_topological(V, fdim, boundary_facets)
-bc = fem.dirichletbc(uD, boundary_dofs)
 
 F = ufl.inner((u_next-u_prev)/dt_constant, v) * ufl.dx + ufl.inner(ufl.grad(u_next), ufl.grad(v)) * ufl.dx
-problem = fem.petsc.NonlinearProblem(F, u_next , bcs = [bc])
+problem = fem.petsc.NonlinearProblem(F, u_next)
 solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)
 
 t = 0.0
@@ -165,7 +162,6 @@ class TestHeat(unittest.TestCase):
         dJdu = fem.assemble_vector(fem.form(dJdu)).array
 
         rhs = dJdu
-        # Set boundary values to zero+
         
         for i in range(len(u_iterations)-1, 0, -1):
             F_i = ufl.replace(F, {u_next: u_iterations[i], u_prev: u_iterations[i-1]})
