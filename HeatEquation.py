@@ -40,7 +40,7 @@ domain = mesh.create_unit_square(MPI.COMM_WORLD, 32, 32, mesh.CellType.triangle)
 V = fem.FunctionSpace(domain, ("CG", 1))
 
 dt = 0.01
-T = 0.02
+T = 0.05
 
 """
 Create true data set
