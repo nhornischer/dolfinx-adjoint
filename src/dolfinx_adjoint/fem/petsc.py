@@ -1,28 +1,28 @@
 import ufl
 from dolfinx import fem, la
-from dolfinx.fem.petsc import NonlinearProblem as NonlinearProblemBase
-from dolfinx.fem.petsc import set_bc
+from dolfinx.fem.petsc import NewtonSolverNonlinearProblem as NonlinearProblemBase
+from dolfinx.fem.petsc import set_bc, assign
 from petsc4py import PETSc
 
 import dolfinx_adjoint.graph as graph
 
 
-class NonlinearProblem(NonlinearProblemBase):
-    """OVERLOADS: :py:class:`dolfinx.fem.petsc.NonlinearProblem`.
+class NewtonSolverNonlinearProblem(NonlinearProblemBase):
+    """OVERLOADS: :py:class:`dolfinx.fem.petsc.NewtonSolverNonlinearProblem`.
     Nonlinear problem class for solving the non-linear problem
 
-    The overloaded class modifies the initialization of the NonlinearProblem to keep track of the dependencies
+    The overloaded class modifies the initialization of the NewtonSolverNonlinearProblem to keep track of the dependencies
     in the computational graph and the adjoint equations. The original functionality is kept.
 
     """
 
     def __init__(self, *args, **kwargs):
-        """OVERLOADS: :py:func:`dolfinx.fem.petsc.NonlinearProblem.__init__`.
+        """OVERLOADS: :py:func:`dolfinx.fem.petsc.NewtonSolverNonlinearProblem.__init__`.
         Initialize solver for solving a non-linear problem using Newton's method
 
         Args:
-            args: Arguments to :py:func:`dolfinx.fem.petsc.NonlinearProblem.__init__`.
-            kwargs: Keyword arguments to :py:func:`dolfinx.fem.petsc.NonlinearProblem.__init__`.
+            args: Arguments to :py:func:`dolfinx.fem.petsc.NewtonSolverNonlinearProblem.__init__`.
+            kwargs: Keyword arguments to :py:func:`dolfinx.fem.petsc.NewtonSolverNonlinearProblem.__init__`.
             graph: An additional keyword argument to specifier whether the assemble
                 operation should be added to the graph. If not present, the original functionality
                 of dolfinx is used without any additional functionalities.
@@ -49,7 +49,7 @@ class NonlinearProblem(NonlinearProblemBase):
                     continue
                 coefficient_node = _graph.get_node(id(coefficient))
                 if not coefficient_node == None:
-                    ctx = [F_form, u_node, coefficient, self.bcs, _graph]
+                    ctx = [F_form, u_node, coefficient, kwargs["bcs"], _graph]
                     coefficient_edge = NonlinearProblem_Coefficient_Edge(
                         coefficient_node, problem_node, ctx=ctx
                     )
@@ -63,7 +63,7 @@ class NonlinearProblem(NonlinearProblemBase):
             for constant in F_form.constants():
                 constant_node = _graph.get_node(id(constant))
                 if not constant_node == None:
-                    ctx = [F_form, u_node, constant, self.bcs]
+                    ctx = [F_form, u_node, constant, kwargs["bcs"]]
                     constant_edge = NonlinearProblem_Constant_Edge(
                         constant_node, problem_node, ctx=ctx
                     )
@@ -87,31 +87,31 @@ class NonlinearProblem(NonlinearProblemBase):
 
 class NonlinearProblemNode(graph.AbstractNode):
     """
-    Node for the initialization of :py:class:`dolfinx.fem.petsc.NonlinearProblem`.
+    Node for the initialization of :py:class:`dolfinx.fem.petsc.NewtonSolverNonlinearProblem`.
     """
 
     def __init__(self, object: object, F: ufl.form.Form, u: fem.Function, **kwargs):
         """
         Constructor for the NonlinearProblemNode.
 
-        In order to create the NonlinearProblem in the forward pass,
+        In order to create the NewtonSolverNonlinearProblem in the forward pass,
         ufl form and the function of the nonlinear problem are needed.
 
         Args:
-            object (object): The NonlinearProblem object.
+            object (object): The NewtonSolverNonlinearProblem object.
             F (ufl.form.Form): The form of the nonlinear problem.
             u (fem.Function): The solution of the nonlinear problem.
             kwargs: Additional keyword arguments to be passed to the super class.
 
         """
-        super().__init__(object, name="NonlinearProblem")
+        super().__init__(object, name="NewtonSolverNonlinearProblem")
         self.F = F
         self.u = u
         self.kwargs = kwargs
 
     def __call__(self):
         """
-        The initialization of the NonlinearProblem object.
+        The initialization of the NewtonSolverNonlinearProblem object.
 
         """
         output = NonlinearProblemBase(self.F, self.u, self.kwargs)
@@ -316,5 +316,7 @@ def AdjointProblemSolver(A: PETSc.Mat, b: PETSc.Vec, x: fem.Function, bcs=None):
     opts["ksp_error_if_not_converged"] = 1
     _solver.setFromOptions()
     _solver.solve(_b, _x)
+
+    assign(_x, x)
 
     return x

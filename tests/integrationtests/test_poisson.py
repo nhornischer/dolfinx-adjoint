@@ -71,7 +71,7 @@ def poisson_problem():
     ]
 
     # Define the problem solver and solve it
-    problem = fem.petsc.NonlinearProblem(
+    problem = fem.petsc.NewtonSolverNonlinearProblem(
         F,
         uh,
         bcs=bcs,
