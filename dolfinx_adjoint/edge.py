@@ -1,5 +1,7 @@
-from .node import Node
 import petsc4py.PETSc as PETSc
+
+from .node import Node
+
 
 class Edge:
     """
@@ -25,7 +27,8 @@ class Edge:
         calculate_adjoint: Calculates the default adjoint equation for the edge
 
     """
-    def __init__(self, predecessor : Node, successor : Node, ctx = None, input_value = None):
+
+    def __init__(self, predecessor: Node, successor: Node, ctx=None, input_value=None):
         """
         The constructor for the Edge class.
 
@@ -42,23 +45,23 @@ class Edge:
         self.ctx = ctx
         self.input_value = input_value
 
-    def set_next_functions(self, funcList : list):
+    def set_next_functions(self, funcList: list):
         """
         This method sets the next functions in the path of the edge.
 
         Typically the next functions are the edges that are connected to the predecessor node.
-        
+
         Args:
             funcList (list): A list of the gradient functions that are connected to the edge
-            
+
         """
-        self.next_functions  = funcList
+        self.next_functions = funcList
 
     def calculate_adjoint(self):
         """
         This method calculates the default adjoint equation for the edge, which corresponds to the derivative
             ∂successor/∂predecessor = 1.0
-        
+
         This operator is stored in the edge and applied to the input. The adjoint value of the predeccessor
         node is generally calculated as follows:
             adjoint(predecessor) += adjoint(successor) * ∂successor/∂predecessor
@@ -67,8 +70,8 @@ class Edge:
             float or PETSc.Vec: The adjoint value of the predecessor node
         """
         return self.input_value
-        
-    def __call__(self, value : float or PETSc.Vec):
+
+    def __call__(self, value: float or PETSc.Vec):
         """
         This method is used to perform the backpropagation of the edge.
 
@@ -79,7 +82,7 @@ class Edge:
             value (float or PETSc.Vec): The adjoint value of the successor node
 
         Note:
-            This method is called automatically when the backpropagation of the whole graph is performed. 
+            This method is called automatically when the backpropagation of the whole graph is performed.
             It should not be modified. The user should implement the calculate_adjoint method to define
             the adjoint equation.
 
@@ -96,21 +99,21 @@ class Edge:
         # Accumulate gradient if end of path
         if self.next_functions == [] and type(self.predecessor) == Node:
             self.predecessor.accumulate_grad(grad_value)
-    
+
     def __str__(self):
         """
         Returns the string representation of the edge.
-        
+
         Returns:
             str: The string representation of the edge
-        
+
         """
         return f"{str(self.predecessor)} -> {str(self.successor)}"
-    
+
     def __del__(self):
         """
         Destructor for the Edge class.
-        
+
         """
         del self.ctx
         del self.input_value

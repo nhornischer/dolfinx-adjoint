@@ -1,6 +1,6 @@
 """
 In this demo we consider the Stokes equation
-    - ν ∆u + ∇p = f in Ω            
+    - ν ∆u + ∇p = f in Ω
           ∇ · u = 0 in Ω
 with Dirichlet boundary conditions
             u = g on circle boundary
@@ -26,32 +26,33 @@ with the regularization parameter α = 10.
 The weak formulation of the problem reads, find (u, p) ∈ V × Q such that
     a((u, p), (v, q)) = L((v, q)) ∀ (v, q) ∈ V × Q
 where
-    a((u, p), (v, q)) = ∫_Ω ν ∇u · ∇v dx - ∫_Ω ∇ · v p dx - ∫_Ω ∇ · u q dx 
-              L(v, q) = ∫_Ω f · v dx 
+    a((u, p), (v, q)) = ∫_Ω ν ∇u · ∇v dx - ∫_Ω ∇ · v p dx - ∫_Ω ∇ · u q dx
+              L(v, q) = ∫_Ω f · v dx
 
 We solve this problem with a residual equation
     F((u, p)) = a((u, p), (v, q)) - L((v, q)) != 0
 """
 
+import os
+
+import dolfinx
+import gmsh
 import numpy as np
 import scipy.sparse as sps
-import gmsh
-
-from mpi4py import MPI
-import dolfinx
-from dolfinx import fem, io, nls
-from dolfinx_adjoint import *
 import ufl
+from dolfinx import fem, io, nls
+from mpi4py import MPI
 from petsc4py.PETSc import ScalarType
 
-import os
+from dolfinx_adjoint import *
+
 dir = os.path.dirname(__file__)
 
 
-# We first need to create a graph object to store the computational graph. 
+# We first need to create a graph object to store the computational graph.
 # This is done explicitly to maintain the guideline of FEniCSx.
 # Every function that is created with a graph object will be added to the graph
-# and its gradient will be computed automatically. 
+# and its gradient will be computed automatically.
 
 graph_ = graph.Graph()
 
@@ -72,24 +73,26 @@ inflow, outflow, walls, obstacle = [], [], [], []
 
 # Mesh generation
 if mesh_comm.rank == model_rank:
-    rectangle = gmsh.model.occ.addRectangle(0,0,0, L, H, tag=1)
+    rectangle = gmsh.model.occ.addRectangle(0, 0, 0, L, H, tag=1)
     circle = gmsh.model.occ.addDisk(c_x, c_y, 0, r, r)
     fluid = gmsh.model.occ.cut([(gdim, rectangle)], [(gdim, circle)])
     gmsh.model.occ.synchronize()
 
     volumes = gmsh.model.getEntities(dim=gdim)
-    assert(len(volumes) == 1)
+    assert len(volumes) == 1
     gmsh.model.addPhysicalGroup(volumes[0][0], [volumes[0][1]], fluid_marker)
     gmsh.model.setPhysicalName(volumes[0][0], fluid_marker, "Fluid")
 
     boundaries = gmsh.model.getBoundary(volumes, oriented=False)
     for boundary in boundaries:
         center_of_mass = gmsh.model.occ.getCenterOfMass(boundary[0], boundary[1])
-        if np.allclose(center_of_mass, [0, H/2, 0]):
+        if np.allclose(center_of_mass, [0, H / 2, 0]):
             inflow.append(boundary[1])
-        elif np.allclose(center_of_mass, [L, H/2, 0]):
+        elif np.allclose(center_of_mass, [L, H / 2, 0]):
             outflow.append(boundary[1])
-        elif np.allclose(center_of_mass, [L/2, H, 0]) or np.allclose(center_of_mass, [L/2, 0, 0]):
+        elif np.allclose(center_of_mass, [L / 2, H, 0]) or np.allclose(
+            center_of_mass, [L / 2, 0, 0]
+        ):
             walls.append(boundary[1])
         else:
             obstacle.append(boundary[1])
@@ -133,36 +136,54 @@ up = fem.Function(V, name="up", graph=graph_)
 vq = ufl.TestFunction(V)
 (v, q) = ufl.split(vq)
 
-# Boundary conditions   
-h = fem.Function(V_u, name="f")             # Inflow Dirichlet boundary condition
+# Boundary conditions
+h = fem.Function(V_u, name="f")  # Inflow Dirichlet boundary condition
 speed = 0.3
-h.interpolate(lambda x: np.stack((speed*4*x[1]*(H-x[1])/(H*H), 0.0* x[0])))
-g = fem.Function(V_u, name="g", graph=graph_)             # Circle Dirichlet boundary condition
-noslip = fem.Function(V_u, name="noslip")        # No-slip homogenous Dirichlet boundary condition at the walls for the velocity
-outflow = fem.Function(V_p, name="outflow")       # Outflow homogeneous Dirichlet boundary condition for the pressure
-outflow.interpolate(lambda x: 0.0*x[0]+0.0)
+h.interpolate(lambda x: np.stack((speed * 4 * x[1] * (H - x[1]) / (H * H), 0.0 * x[0])))
+g = fem.Function(V_u, name="g", graph=graph_)  # Circle Dirichlet boundary condition
+noslip = fem.Function(
+    V_u, name="noslip"
+)  # No-slip homogenous Dirichlet boundary condition at the walls for the velocity
+outflow = fem.Function(
+    V_p, name="outflow"
+)  # Outflow homogeneous Dirichlet boundary condition for the pressure
+outflow.interpolate(lambda x: 0.0 * x[0] + 0.0)
 
-dofs_walls = fem.locate_dofs_topological((V.sub(0), V_u), 1, ft.indices[ft.values == wall_marker])
-dofs_inflow = fem.locate_dofs_topological((V.sub(0), V_u), 1, ft.indices[ft.values == inlet_marker])
-dofs_outflow = fem.locate_dofs_topological((V.sub(1), V_p), 1, ft.indices[ft.values == outlet_marker])
-dofs_obstacle = fem.locate_dofs_topological((V.sub(0), V_u), 1, ft.indices[ft.values == obstacle_marker])
+dofs_walls = fem.locate_dofs_topological(
+    (V.sub(0), V_u), 1, ft.indices[ft.values == wall_marker]
+)
+dofs_inflow = fem.locate_dofs_topological(
+    (V.sub(0), V_u), 1, ft.indices[ft.values == inlet_marker]
+)
+dofs_outflow = fem.locate_dofs_topological(
+    (V.sub(1), V_p), 1, ft.indices[ft.values == outlet_marker]
+)
+dofs_obstacle = fem.locate_dofs_topological(
+    (V.sub(0), V_u), 1, ft.indices[ft.values == obstacle_marker]
+)
 
-bc_dofs_total = np.concatenate([dofs_walls[0], dofs_inflow[0], dofs_outflow[0], dofs_obstacle[0]])
+bc_dofs_total = np.concatenate(
+    [dofs_walls[0], dofs_inflow[0], dofs_outflow[0], dofs_obstacle[0]]
+)
 
-bcs = [fem.dirichletbc(h, dofs_inflow, V.sub(0)),
-        fem.dirichletbc(g, dofs_obstacle, V.sub(0), graph=graph_, map = V_u_map),
-          fem.dirichletbc(noslip, dofs_walls, V.sub(0)),
-            fem.dirichletbc(outflow, dofs_outflow, V.sub(1))]
+bcs = [
+    fem.dirichletbc(h, dofs_inflow, V.sub(0)),
+    fem.dirichletbc(g, dofs_obstacle, V.sub(0), graph=graph_, map=V_u_map),
+    fem.dirichletbc(noslip, dofs_walls, V.sub(0)),
+    fem.dirichletbc(outflow, dofs_outflow, V.sub(1)),
+]
 # Parameters
-nu = fem.Constant(mesh, ScalarType(1.0), name = "ν", graph = graph_)
+nu = fem.Constant(mesh, ScalarType(1.0), name="ν", graph=graph_)
 alpha = 10.0
 f = fem.Function(V_u, name="f")
-f.interpolate(lambda x: (0.0 *x[0], 0.0 + 0.0*x[1]))
+f.interpolate(lambda x: (0.0 * x[0], 0.0 + 0.0 * x[1]))
 
 # Variational formulation
-a = nu * ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx\
-    - ufl.div(v) * p * ufl.dx\
+a = (
+    nu * ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
+    - ufl.div(v) * p * ufl.dx
     + q * ufl.div(u) * ufl.dx
+)
 L = ufl.inner(f, v) * ufl.dx
 F = a - L
 
@@ -170,11 +191,14 @@ F = a - L
 problem = fem.petsc.NonlinearProblem(F, up, bcs=bcs, graph=graph_)
 solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph=graph_)
 
-solver.solve(up, graph=graph_)   
+solver.solve(up, graph=graph_)
 
 # Define the objective function
 dObs = ufl.Measure("ds", domain=mesh, subdomain_data=ft, subdomain_id=obstacle_marker)
-J_form  = 0.5 * ufl.inner(ufl.grad(u), ufl.grad(u)) * ufl.dx + alpha / 2 * ufl.inner(g, g) * dObs
+J_form = (
+    0.5 * ufl.inner(ufl.grad(u), ufl.grad(u)) * ufl.dx
+    + alpha / 2 * ufl.inner(g, g) * dObs
+)
 
 J = fem.assemble_scalar(fem.form(J_form, graph=graph_), graph=graph_)
 
@@ -190,24 +214,26 @@ if __name__ == "__main__":
 
 
 import unittest
+
+
 class TestStokes(unittest.TestCase):
     def test_Stokes_dJdnu(self):
         """
         In this test we explicitly calculate the adjoint of J with respect to ν.
         Again we come up with
             dJ/dν = ∂J/∂u * du/dν + ∂J/∂ν                               (2.1)
-        
+
         The first term ∂J/∂u is easy to compute, and to calculate the term ∂J/∂ν using a fem.function does the trick
-        in order to use the automatic differentiation in ufl. Here we have to keep in mind that we still need 
-        a scalar quantity as the value of ∂J/∂ν. 
+        in order to use the automatic differentiation in ufl. Here we have to keep in mind that we still need
+        a scalar quantity as the value of ∂J/∂ν.
 
         The second term du/dν will be handled using the adjoint problem similar to (1.2)
             dF/dν = ∂F/∂u * du/dν + ∂F/∂ν = 0
             => du/dν = -(∂F/∂u)^-1 * ∂F/∂ν                              (2.2)
-        
+
         Inserting (2.2) into (2.1) yields
             dJ/dν = - ∂J/∂u * (∂F/∂u)^-1 * ∂F/∂ν + ∂J/∂ν                (2.3)
-        
+
         Our adjoint approach thus is to solve the adjoint problem
             ∂Fᵀ/∂u * λ =  - ∂Jᵀ/∂u                                      (2.4)
         and then compute the gradient of J(u) with respect to ν using (2.3).
@@ -220,7 +246,6 @@ class TestStokes(unittest.TestCase):
         J_form_replaced = ufl.replace(J_form, {nu: nu_function})
         F_replaced = ufl.replace(F, {nu: nu_function})
 
-
         dJdu = ufl.derivative(J_form, up)
         dJdnu = ufl.derivative(J_form_replaced, nu_function)
         dFdnu = ufl.derivative(F_replaced, nu_function)
@@ -230,28 +255,27 @@ class TestStokes(unittest.TestCase):
         dJdnu = fem.assemble_scalar(fem.form(dJdnu))
         dFdnu = fem.assemble_vector(fem.form(dFdnu)).array
         dFdu = fem.assemble_matrix(fem.form(dFdu), bcs=bcs).to_dense()
-        
+
         # We now need to apply the boundary conditions to the rhs of the adjoint problem
         for bc_dof in bc_dofs_total:
             dJdu[int(bc_dof)] = 0
 
-        adjoint_solution = np.linalg.solve(dFdu.transpose(), - dJdu.transpose())
+        adjoint_solution = np.linalg.solve(dFdu.transpose(), -dJdu.transpose())
 
         gradient = adjoint_solution.transpose() @ dFdnu + dJdnu
 
         self.assertTrue(np.allclose(graph_.backprop(id(J), id(nu)), gradient))
 
-
     def test_Stokes_dJdg(self):
         """
         In this test we calculate the derivative of the objective function
         with respect to the Dirichlet boundary condition g.
-        
+
             dJ(u,p,g)/dg = ∂J/∂up ∂up/∂g + ∂J/∂g
 
-        We can easily calculate the derivative of 
+        We can easily calculate the derivative of
         ∂J/∂up and ∂J/∂g by using the symbolic differentiation of UFL.
-        
+
         Since u is defined on a mixed element space we need to take care of
         the function spaces while calculating the derivative.
 
@@ -262,13 +286,13 @@ class TestStokes(unittest.TestCase):
         defined on V_u and up on V = V_u x V_p.
 
         Thus we need to map the derivative ∂F/∂g from V_u to V.
-        
+
         Putting it all together results in the adjoint approach
         of first calculating
             (∂F/∂up)ᵀ λ = - (∂J/∂up)ᵀ
         and then inserting it into
             dJdg = λᵀ ∂F/∂g + ∂J/∂g
-        
+
         To get only the gradient values on the boundary we multiply the gradient
         with an identity matrix that is nonzero everywhere except on the boundary.
 
@@ -276,7 +300,7 @@ class TestStokes(unittest.TestCase):
         thus we need to map it back to the function space of g.
         """
         argument = ufl.TrialFunction(V)
-        dJdu = ufl.derivative(J_form, up, argument) 
+        dJdu = ufl.derivative(J_form, up, argument)
 
         dJdg = ufl.derivative(J_form, g)
 
@@ -287,7 +311,7 @@ class TestStokes(unittest.TestCase):
         dJdg = fem.assemble_vector(fem.form(dJdg)).array
 
         dFdg = fem.assemble_matrix(problem._a).to_dense()
-        dFdu = fem.assemble_matrix(fem.form(dFdu), bcs = bcs).to_dense()
+        dFdu = fem.assemble_matrix(fem.form(dFdu), bcs=bcs).to_dense()
 
         # We now need to apply the boundary conditions to the rhs of the adjoint problem
         for bc_dof in bc_dofs_total:
@@ -295,7 +319,7 @@ class TestStokes(unittest.TestCase):
 
         adjoint_solution = np.linalg.solve(dFdu.transpose(), -dJdu.transpose())
 
-        gradient =  adjoint_solution.transpose() @ dFdg 
+        gradient = adjoint_solution.transpose() @ dFdg
 
         matrix = np.zeros((len(gradient), len(gradient)))
         for index in dofs_obstacle[0]:
@@ -303,5 +327,3 @@ class TestStokes(unittest.TestCase):
 
         gradient = (matrix @ gradient)[V_u_map] + dJdg
         self.assertTrue(np.allclose(gradient, graph_.backprop(id(J), id(g))))
-
-

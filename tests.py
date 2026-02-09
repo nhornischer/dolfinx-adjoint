@@ -1,9 +1,9 @@
 import unittest
 
-from Poisson import TestPoisson
-from Stokes import TestStokes
 from HeatEquation import TestHeat
 from LinearElasticity import TestLinearElasticity
+from Poisson import TestPoisson
+from Stokes import TestStokes
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

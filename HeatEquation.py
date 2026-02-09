@@ -19,22 +19,21 @@ for all v∈ H\^1(Ω). The time derivative is approximated by a backward Euler s
 
     ∫_Ω (u-u\^n)/dt v dx + ∫_Ω ∇u ⋅ ∇v dx = 0
 
-where u\^n is the solution at the previous time step. 
+where u\^n is the solution at the previous time step.
 
 The objective function in our case is the L\^2-norm of the temperature at the last time step.
 
     J(u) = ∫_Ω u ⋅ u dx
 """
+
 import numpy as np
 import scipy.sparse as sps
-
+import ufl
+from dolfinx import fem, io, mesh, nls
 from mpi4py import MPI
-from dolfinx import mesh, fem, io, nls
-from dolfinx_adjoint import *
-
 from petsc4py.PETSc import ScalarType
 
-import ufl
+from dolfinx_adjoint import *
 
 domain = mesh.create_unit_square(MPI.COMM_WORLD, 32, 32, mesh.CellType.triangle)
 V = fem.FunctionSpace(domain, ("CG", 1))
@@ -52,16 +51,19 @@ u_prev = true_initial.copy()
 u_next = true_initial.copy()
 
 v = ufl.TestFunction(V)
-dt_constant = fem.Constant(domain, ScalarType(dt))  
+dt_constant = fem.Constant(domain, ScalarType(dt))
 
 # Set dirichlet boundary conditions
 uD = fem.Function(V)
-uD.interpolate(lambda x: 0.0 + 0.0 *x[0])
+uD.interpolate(lambda x: 0.0 + 0.0 * x[0])
 tdim = domain.topology.dim
 fdim = tdim - 1
 domain.topology.create_connectivity(fdim, tdim)
 
-F = ufl.inner((u_next-u_prev)/dt_constant, v) * ufl.dx + ufl.inner(ufl.grad(u_next), ufl.grad(v)) * ufl.dx
+F = (
+    ufl.inner((u_next - u_prev) / dt_constant, v) * ufl.dx
+    + ufl.inner(ufl.grad(u_next), ufl.grad(v)) * ufl.dx
+)
 problem = fem.petsc.NonlinearProblem(F, u_next)
 solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)
 
@@ -79,12 +81,15 @@ Create test data
 graph_ = graph.Graph()
 
 # Set the initial values of the temperature variable u
-initial_guess = fem.Function(V, name = "initial_guess", graph=graph_)
+initial_guess = fem.Function(V, name="initial_guess", graph=graph_)
 initial_guess.interpolate(lambda x: 15.0 * x[0] * (1.0 - x[0]) * x[1] * (1.0 - x[1]))
-u_prev = initial_guess.copy(graph=graph_, name = "u_prev")
-u_next = initial_guess.copy(graph=graph_, name = "u_next")
+u_prev = initial_guess.copy(graph=graph_, name="u_prev")
+u_next = initial_guess.copy(graph=graph_, name="u_next")
 
-F = ufl.inner((u_next-u_prev)/dt_constant, v) * ufl.dx + ufl.inner(ufl.grad(u_next), ufl.grad(v)) * ufl.dx
+F = (
+    ufl.inner((u_next - u_prev) / dt_constant, v) * ufl.dx
+    + ufl.inner(ufl.grad(u_next), ufl.grad(v)) * ufl.dx
+)
 t = 0.0
 i = 0
 
@@ -93,20 +98,26 @@ i = 0
 u_iterations = [u_next.copy()]
 while t < T:
     i += 1
-    F = ufl.inner((u_next-u_prev)/dt_constant, v) * ufl.dx + ufl.inner(ufl.grad(u_next), ufl.grad(v)) * ufl.dx
+    F = (
+        ufl.inner((u_next - u_prev) / dt_constant, v) * ufl.dx
+        + ufl.inner(ufl.grad(u_next), ufl.grad(v)) * ufl.dx
+    )
     problem = fem.petsc.NonlinearProblem(F, u_next, graph=graph_)
-    solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph = graph_)
+    solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph=graph_)
 
-    solver.solve(u_next, graph=graph_, version = i)
+    solver.solve(u_next, graph=graph_, version=i)
     t += dt
-    u_prev.assign(u_next, graph = graph_, version = i)
+    u_prev.assign(u_next, graph=graph_, version=i)
 
     # Storing the iterations for later visualisation and testing
     u_iterations.append(u_next.copy())
 
 alpha = fem.Constant(domain, ScalarType(1.0e-6))
 
-J_form = ufl.inner(true_data - u_next, true_data - u_next) * ufl.dx + alpha * ufl.inner(ufl.grad(initial_guess), ufl.grad(initial_guess)) * ufl.dx
+J_form = (
+    ufl.inner(true_data - u_next, true_data - u_next) * ufl.dx
+    + alpha * ufl.inner(ufl.grad(initial_guess), ufl.grad(initial_guess)) * ufl.dx
+)
 J = fem.assemble_scalar(fem.form(J_form, graph=graph_), graph=graph_)
 
 if __name__ == "__main__":
@@ -119,16 +130,18 @@ if __name__ == "__main__":
     grad_func = fem.Function(V, name="gradient")
     grad_func.vector[:] = dJdinit
 
-    temperature_function = fem.Function(V, name = "temperature")
+    temperature_function = fem.Function(V, name="temperature")
 
-    print("J(u) = ", J)    
+    print("J(u) = ", J)
     print("||dJdu_0||_L2 = ", np.sqrt(np.dot(dJdinit, dJdinit)))
 
 import unittest
+
+
 class TestHeat(unittest.TestCase):
     def test_Heat_initial(self):
-        """ 
-        In this test we compare the automatically constructed adjoint equations and its solution with 
+        """
+        In this test we compare the automatically constructed adjoint equations and its solution with
         the analytically derived adjoint equations and their discretized solution.
 
         We compute the derivative of J with respect to the initial guess u_0.
@@ -138,7 +151,7 @@ class TestHeat(unittest.TestCase):
         The first and last term ∂J/∂u_N and ∂J/∂u_0 can be easily obtained by the unified form language (UFL).
 
         The second term du_N/du_{N-1} can be obtained by solving the adjoint equation. To this end, we take the derivative
-        of the residual equation F(u_N, u_{N-1}) = 0 with respect to u_{N-1} and obtain 
+        of the residual equation F(u_N, u_{N-1}) = 0 with respect to u_{N-1} and obtain
             dF/du_{N-1} = ∂F/∂u_N * du_N/du_{N-1} + ∂F/∂u_{N-1} = 0
 
             => du_N/du_{N-1} = - (∂F/∂u_N)^{-1} * ∂F/∂u_{N-1}                                       (1.2)
@@ -151,7 +164,7 @@ class TestHeat(unittest.TestCase):
         and the subsequent adjoint equations
             (∂Fᵀ/∂u_{i-1}) * λ_{i-1} = - λ_i * ∂Fᵀ/∂u_{i-1}
         Here it is important that F depends on u_{i-1} and u_i, denoted with F_i
-        
+
         We then obtain
             dJ/du_0 = λᵀ_1 * ∂F/∂u_{0} + ∂J/∂u_0
         """
@@ -162,20 +175,21 @@ class TestHeat(unittest.TestCase):
         dJdu = fem.assemble_vector(fem.form(dJdu)).array
 
         rhs = dJdu
-        
-        for i in range(len(u_iterations)-1, 0, -1):
-            F_i = ufl.replace(F, {u_next: u_iterations[i], u_prev: u_iterations[i-1]})
+
+        for i in range(len(u_iterations) - 1, 0, -1):
+            F_i = ufl.replace(F, {u_next: u_iterations[i], u_prev: u_iterations[i - 1]})
             dF_idu_i = ufl.derivative(F_i, u_iterations[i])
             dF_idu_i = fem.assemble_matrix(fem.form(dF_idu_i)).to_dense()
 
-            lambda_i = np.linalg.solve(dF_idu_i.transpose(), - rhs.transpose())
+            lambda_i = np.linalg.solve(dF_idu_i.transpose(), -rhs.transpose())
 
-            dF_idu_i_1 = ufl.derivative(F_i, u_iterations[i-1])
+            dF_idu_i_1 = ufl.derivative(F_i, u_iterations[i - 1])
             dF_idu_i_1 = fem.assemble_matrix(fem.form(dF_idu_i_1)).to_dense()
             rhs = lambda_i.transpose() @ dF_idu_i_1
 
         gradient = rhs + dJdu_0
 
         # Compare the results
-        self.assertTrue(np.allclose(graph_.backprop(id(J), id(initial_guess)), gradient))
-    
+        self.assertTrue(
+            np.allclose(graph_.backprop(id(J), id(initial_guess)), gradient)
+        )

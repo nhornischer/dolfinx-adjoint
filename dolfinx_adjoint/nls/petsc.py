@@ -1,8 +1,8 @@
-from dolfinx.nls.petsc import NewtonSolver as NewtonSolverBase
-import dolfinx_adjoint.graph as graph
-
 from dolfinx.fem.petsc import NonlinearProblem
+from dolfinx.nls.petsc import NewtonSolver as NewtonSolverBase
 from mpi4py import MPI
+
+import dolfinx_adjoint.graph as graph
 
 
 class NewtonSolver(NewtonSolverBase):
@@ -11,7 +11,7 @@ class NewtonSolver(NewtonSolverBase):
 
     The overloaded class modifies the initialization of the NewtonSolver to keep track of the dependencies
     in the computational graph and the adjoint equations. The original functionality is kept.
-    
+
     """
 
     def __init__(self, *args, **kwargs):
@@ -24,7 +24,7 @@ class NewtonSolver(NewtonSolverBase):
             graph (graph, optional): An additional keyword argument to specifier whether the assemble
                 operation should be added to the graph. If not present, the original functionality
                 of dolfinx is used without any additional functionalities.
-        
+
         """
         if "graph" not in kwargs:
             super().__init__(*args, **kwargs)
@@ -61,7 +61,7 @@ class NewtonSolver(NewtonSolverBase):
             bool: Convergence of the solver
 
         """
-        
+
         # Add the edge from the NewtonSolver to the Function
         if "graph" not in kwargs:
             output = super().solve(*args, **kwargs)
@@ -75,7 +75,9 @@ class NewtonSolver(NewtonSolverBase):
             del kwargs["graph"]
 
             solver_node = _graph.get_node(id(self))
-            solve_node = SolveNode(args[0], solver_node, version = version, name = args[0].name)
+            solve_node = SolveNode(
+                args[0], solver_node, version=version, name=args[0].name
+            )
             _graph.add_node(solve_node)
 
             # Creating and adding the edge to the graph
@@ -88,19 +90,27 @@ class NewtonSolver(NewtonSolverBase):
             output = super().solve(*args, **kwargs)
 
         return output
-    
+
 
 class NewtonSolverNode(graph.AbstractNode):
     """
     Node for the initialization of :py:class:`dolfinx.nls.petsc.NewtonSolver`
-    
+
     """
-    def __init__(self, object : object ,comm : MPI.Intracomm, problem : NonlinearProblem, name = "NewtonSolver", **kwargs):
+
+    def __init__(
+        self,
+        object: object,
+        comm: MPI.Intracomm,
+        problem: NonlinearProblem,
+        name="NewtonSolver",
+        **kwargs
+    ):
         """
         Constructor for the NewtonSolverNode
 
         In order to create the NewtonSolver in the forward pass,
-        the problem and the MPI communicator are needed. 
+        the problem and the MPI communicator are needed.
 
         Args:
             object (object): The object to be wrapped in the node
@@ -110,9 +120,9 @@ class NewtonSolverNode(graph.AbstractNode):
             kwargs (optional): Additional keyword arguments to be passed to the :py:class:`dolfinx_adjoint.graph.AbstractNode` constructor
 
         """
-        super().__init__(object, name = name, **kwargs)
+        super().__init__(object, name=name, **kwargs)
         self.comm = comm
-        self.problem = problem    
+        self.problem = problem
 
     def __call__(self):
         """
@@ -121,18 +131,20 @@ class NewtonSolverNode(graph.AbstractNode):
         """
         self.object = NewtonSolverBase(self.comm, self.problem)
 
+
 class SolveNode(graph.Node):
     """
     Node for the operation :py:func:`dolfinx.nls.petsc.NewtonSolver.solve`
-    
+
     """
-    def __init__(self, object : object, solverNode : graph.Node, name = "solve", **kwargs):
+
+    def __init__(self, object: object, solverNode: graph.Node, name="solve", **kwargs):
         """
         Constructor for the SolveNode
 
         In order to solve the non-linear problem associated with the NewtonSolver,
         the solverNode storing the NewtonSolver and the non-linear problem are needed.
-        
+
         Args:
             object (object): The object to be wrapped in the node
             solverNode (graph.Node): The node storing the NewtonSolver
@@ -140,16 +152,15 @@ class SolveNode(graph.Node):
             kwargs (optional): Additional keyword arguments to be passed to the :py:class:`dolfinx_adjoint.graph.AbstractNode` constructor
 
         """
-        super().__init__(object, name = name, **kwargs)
+        super().__init__(object, name=name, **kwargs)
         self.solverNode = solverNode
         self.initial_values = object.vector.array.copy()
-        
 
     def __call__(self):
         """
         The call method to solve the non-linear problem associated with the NewtonSolver
 
         """
-    
+
         self.object.vector.array[:] = self.initial_values[:]
         self.solverNode.object.solve(self.object)
