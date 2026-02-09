@@ -117,7 +117,10 @@ class Form_Coefficient_Edge(graph.Edge):
         ufl_form, coefficient = self.ctx
         derivative = ufl.derivative(ufl_form, coefficient)
 
-        return self.input_value * fem.petsc.assemble_vector(fem.form(derivative))
+        output = fem.petsc.assemble_vector(fem.form(derivative))
+        output.scale(self.input_value)
+
+        return output
     
 class Form_Constant_Edge(graph.Edge):
     """
