@@ -88,8 +88,9 @@ def stokes_problem():
     graph_ = Graph()
 
     # Function spaces as Mixed Element space
-    u_elem = ufl.VectorElement("CG", mesh.ufl_cell(), 2)
-    p_elem = ufl.FiniteElement("CG", mesh.ufl_cell(), 1)
+    from basix.ufl import element
+    u_elem = element("Lagrange", mesh.basix_cell(), 2, shape = (2,))
+    p_elem = element("Lagrange", mesh.basix_cell(), 1)
 
     v_elem = ufl.MixedElement([u_elem, p_elem])
     V = fem.functionspace(mesh, v_elem)

@@ -24,7 +24,7 @@ def poisson_problem():
 
     # Define mesh and finite element space
     domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, mesh.CellType.triangle)
-    V = fem.functionspace(domain, ("CG", 1))
+    V = fem.functionspace(domain, ("Lagrange", 1))
     W = fem.functionspace(domain, ("DG", 0))
 
     # Define the basis functions and parameters

@@ -19,7 +19,7 @@ from dolfinx_adjoint import *
 def heat_equation_problem():
     """Set up the heat equation problem that will be used in all tests."""
     domain = mesh.create_unit_square(MPI.COMM_WORLD, 32, 32, mesh.CellType.triangle)
-    V = fem.functionspace(domain, ("CG", 1))
+    V = fem.functionspace(domain, ("Lagrange", 1))
 
     dt = 0.01
     T = 0.05
