@@ -69,7 +69,9 @@ def linear_elasticity_problem():
         u_D, fem.locate_dofs_topological(V, domain.topology.dim - 1, boundary_facets), V
     )
 
-    problem = fem.petsc.NonlinearProblem(F, u, bcs=[bc], graph=graph_)
+    problem = fem.petsc.NonlinearProblem(
+        F, u, bcs=[bc], graph=graph_, petsc_options_prefix="nls_"
+    )
     solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph=graph_)
     solver.solve(u, graph=graph_)
 

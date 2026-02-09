@@ -154,7 +154,9 @@ def stokes_problem():
     F = a - L
 
     # Define the problem solver
-    problem = fem.petsc.NonlinearProblem(F, up, bcs=bcs, graph=graph_)
+    problem = fem.petsc.NonlinearProblem(
+        F, up, bcs=bcs, graph=graph_, petsc_options_prefix="nls_"
+    )
     solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph=graph_)
 
     solver.solve(up, graph=graph_)

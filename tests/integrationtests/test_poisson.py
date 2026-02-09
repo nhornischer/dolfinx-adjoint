@@ -76,6 +76,7 @@ def poisson_problem():
         uh,
         bcs=bcs,
         graph=graph_,
+        petsc_options_prefix="nls_",
     )
     solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph=graph_)
     solver.solve(uh, graph=graph_)
