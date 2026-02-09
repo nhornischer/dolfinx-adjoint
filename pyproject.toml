@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dolfinx-adjoint"
+version = "0.3.0"
+authors = [
+  { name = "Niklas Hornischer", email = "niklas.hornischer@ians.uni-stuttgart.de" },
+]
+maintainers = [
+  { name = "Niklas Hornischer", email = "niklas.hornischer@ians.uni-stuttgart.de" },
+]
+
+description = "Automatic differentiation library for DOLFINx"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = { file = "LICENSE.txt" }
+dependencies = [
+  "mpi4py",
+  "numpy",
+  "scipy",
+  "fenics-dolfinx>=0.7.3",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "networkx"]
+visualization = ["networkx", "matplotlib"]
+all = ["pytest", "networkx", "matplotlib"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

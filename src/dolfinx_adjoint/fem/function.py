@@ -1,5 +1,7 @@
 from dolfinx import fem, la
+
 import dolfinx_adjoint.graph as graph
+
 
 class Function(fem.Function):
     """OVERLOADS: :py:class:`dolfinx.fem.function.Function`
@@ -14,8 +16,9 @@ class Function(fem.Function):
     Methods:
         copy: Creates a new function and adds the corresponding node to the graph.
         assign: Assign values to the function and adds the corresponding operation to the graph.
-    
+
     """
+
     def __init__(self, *args, **kwargs):
         """OVERLOADS: :py:func:`dolfinx.fem.function.Function.__init__`
         Initialize a finite element Function.
@@ -38,7 +41,7 @@ class Function(fem.Function):
         if "map" in kwargs:
             map = kwargs["map"]
             del kwargs["map"]
-        else: 
+        else:
             map = None
         if not "graph" in kwargs:
             super().__init__(*args, **kwargs)
@@ -63,7 +66,9 @@ class Function(fem.Function):
             Function: A new dolfinx.fem.Function with the same function space and a copy of the PETsc vector.
 
         """
-        result = Function(self.function_space, la.Vector(type(self.x._cpp_object)(self.x._cpp_object)))
+        result = Function(
+            self.function_space, la.Vector(type(self.x._cpp_object)(self.x._cpp_object))
+        )
         if "name" in kwargs:
             result.name = kwargs["name"]
         if "graph" in kwargs:
@@ -80,7 +85,7 @@ class Function(fem.Function):
 
         return result
 
-    def assign(self, function : fem.Function, **kwargs):
+    def assign(self, function: fem.Function, **kwargs):
         """
         Assign values of a different dolfinx.fem.Function to the function and adds the corresponding operation to the graph.
 
@@ -90,7 +95,7 @@ class Function(fem.Function):
                 operation should be added to the graph. If not present, the original functionality
                 of dolfinx is used without any additional functionalities.
             version (int, optional): An additional keyword argument to specify the version of the operation in the graph. If not present, the version is set to 0.
-    
+
         """
         self.vector[:] = function.vector[:]
         if "graph" in kwargs:
@@ -100,7 +105,7 @@ class Function(fem.Function):
                 version = kwargs["version"]
             else:
                 version = 0
-            assign_node = graph.Node(self, name=self.name, version = version)
+            assign_node = graph.Node(self, name=self.name, version=version)
             _graph.add_node(assign_node)
 
             function_node = _graph.get_node(id(function))
@@ -108,7 +113,7 @@ class Function(fem.Function):
             assign_node.set_gradFuncs([assign_edge])
             _graph.add_edge(assign_edge)
             assign_edge.set_next_functions(function_node.get_gradFuncs())
-                   
+
 
 class Constant(fem.Constant):
     """OVERLOADS: :py:class:`dolfinx.fem.constant.Constant`
@@ -118,6 +123,7 @@ class Constant(fem.Constant):
     in the computational graph and the adjoint equations. The original functionality is kept.
 
     """
+
     def __init__(self, *args, **kwargs):
         """OVERLOADS: :py:func:`dolfinx.fem.constant.Constant.__init__`
         Initialize a constant function.
@@ -129,7 +135,7 @@ class Constant(fem.Constant):
                 operation should be added to the graph. If not present, the original functionality
                 of dolfinx is used without any additional functionalities.
             name (str, optional): An additional keyword argument to specify the name of the function. If not present, the name is set to "Constant".
-        
+
         """
         if not "graph" in kwargs:
             if "name" in kwargs:
