@@ -104,7 +104,7 @@ class NewtonSolverNode(graph.AbstractNode):
         comm: MPI.Intracomm,
         problem: NonlinearProblem,
         name="NewtonSolver",
-        **kwargs
+        **kwargs,
     ):
         """
         Constructor for the NewtonSolverNode
