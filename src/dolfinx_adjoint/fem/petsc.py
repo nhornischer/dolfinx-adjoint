@@ -1,7 +1,7 @@
 import ufl
 from dolfinx import fem, la
 from dolfinx.fem.petsc import NewtonSolverNonlinearProblem as NonlinearProblemBase
-from dolfinx.fem.petsc import set_bc, assign
+from dolfinx.fem.petsc import set_bc, assign, create_vector
 from petsc4py import PETSc
 
 import dolfinx_adjoint.graph as graph
@@ -49,7 +49,7 @@ class NewtonSolverNonlinearProblem(NonlinearProblemBase):
                     continue
                 coefficient_node = _graph.get_node(id(coefficient))
                 if not coefficient_node == None:
-                    ctx = [F_form, u_node, coefficient, kwargs["bcs"], _graph]
+                    ctx = [F_form, u_node, coefficient, kwargs.get("bcs"), _graph]
                     coefficient_edge = NonlinearProblem_Coefficient_Edge(
                         coefficient_node, problem_node, ctx=ctx
                     )
@@ -63,7 +63,7 @@ class NewtonSolverNonlinearProblem(NonlinearProblemBase):
             for constant in F_form.constants():
                 constant_node = _graph.get_node(id(constant))
                 if not constant_node == None:
-                    ctx = [F_form, u_node, constant, kwargs["bcs"]]
+                    ctx = [F_form, u_node, constant, kwargs.get("bcs")]
                     constant_edge = NonlinearProblem_Constant_Edge(
                         constant_node, problem_node, ctx=ctx
                     )
@@ -72,11 +72,11 @@ class NewtonSolverNonlinearProblem(NonlinearProblemBase):
                     constant_edge.set_next_functions(constant_node.get_gradFuncs())
 
             # Creating and adding edges to the graph if the boundary conditions are in the graph
-            if hasattr(self, "bcs"):
-                for bc in self.bcs:
+            if "bcs" in kwargs.keys() and not kwargs.get("bcs") == None:
+                for bc in kwargs.get("bcs"):
                     bc_node = _graph.get_node(id(bc))
                     if not bc_node == None:
-                        ctx = [F_form, u_node, self.bcs, self._a]
+                        ctx = [F_form, u_node, kwargs.get("bcs"), self._a]
                         bc_edge = NonlinearProblem_Boundary_Edge(
                             bc_node, problem_node, ctx=ctx
                         )
@@ -172,7 +172,7 @@ class NonlinearProblem_Coefficient_Edge(graph.Edge):
         dFdm.assemble()
 
         # Calculate λᵀ * ∂F/∂m
-        return dFdm.transpose() * adjoint_solution.vector
+        return dFdm.transpose() * adjoint_solution.x.petsc_vec
 
 
 class NonlinearProblem_Constant_Edge(graph.Edge):
@@ -219,9 +219,9 @@ class NonlinearProblem_Constant_Edge(graph.Edge):
         # Create a function based on the constant in order to use ufl.derivative
         # to calculate ∂F/∂m
         domain = m.domain
-        DG0 = fem.FunctionSpace(domain, ("DG", 0))
+        DG0 = fem.functionspace(domain, ("DG", 0))
         function = fem.Function(DG0)
-        function.vector.array[:] = m.c
+        function.x.array[:] = m.c
         replaced_form = ufl.replace(F, {m: function})
         dFdm = fem.petsc.assemble_vector(
             fem.form(ufl.derivative(replaced_form, function))
@@ -229,7 +229,7 @@ class NonlinearProblem_Constant_Edge(graph.Edge):
         dFdm.assemble()
 
         # Calculate λᵀ * ∂F/∂m
-        return adjoint_solution.vector.dot(dFdm)
+        return adjoint_solution.x.petsc_vec.dot(dFdm)
 
 
 class NonlinearProblem_Boundary_Edge(graph.Edge):
@@ -278,7 +278,7 @@ class NonlinearProblem_Boundary_Edge(graph.Edge):
         dFdbc = fem.petsc.assemble_matrix(dFdbc_form)
         dFdbc.assemble()
 
-        return dFdbc.transpose() * adjoint_solution.vector
+        return dFdbc.transpose() * adjoint_solution.x.petsc_vec
 
 
 def AdjointProblemSolver(A: PETSc.Mat, b: PETSc.Vec, x: fem.Function, bcs=None):
@@ -296,12 +296,13 @@ def AdjointProblemSolver(A: PETSc.Mat, b: PETSc.Vec, x: fem.Function, bcs=None):
 
     """
 
-    _x = la.create_petsc_vector_wrap(x.x)
+    _x = create_vector(x.function_space)
     _solver = PETSc.KSP().create(x.function_space.mesh.comm)
     _solver.setOperators(A)
 
     _b = PETSc.Vec().createWithArray(b)
-    set_bc(_b, bcs, scale=0.0)
+    if bcs is not None:
+        set_bc(_b, bcs, alpha=0.0)
 
     _solver.setType("preonly")
     _solver.getPC().setType("lu")

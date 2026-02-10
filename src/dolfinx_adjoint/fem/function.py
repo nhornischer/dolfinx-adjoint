@@ -97,7 +97,7 @@ class Function(fem.Function):
             version (int, optional): An additional keyword argument to specify the version of the operation in the graph. If not present, the version is set to 0.
 
         """
-        self.vector[:] = function.vector[:]
+        self.x.array[:] = function.x.array[:]
         if "graph" in kwargs:
             _graph = kwargs["graph"]
             del kwargs["graph"]

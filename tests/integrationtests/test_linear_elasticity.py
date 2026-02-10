@@ -69,9 +69,7 @@ def linear_elasticity_problem():
         u_D, fem.locate_dofs_topological(V, domain.topology.dim - 1, boundary_facets), V
     )
 
-    problem = fem.petsc.NewtonSolverNonlinearProblem(
-        F, u, bcs=[bc], graph=graph_, petsc_options_prefix="nls_"
-    )
+    problem = fem.petsc.NewtonSolverNonlinearProblem(F, u, bcs=[bc], graph=graph_)
     solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph=graph_)
     solver.solve(u, graph=graph_)
 
@@ -132,7 +130,7 @@ def test_material_param_lambda(linear_elasticity_problem):
     # Define a new form to use ufl.derivative for the derivative of F with respect to λ
     DG0 = fem.functionspace(domain, ("DG", 0))
     lambda_func = fem.Function(DG0, name="lambda")
-    lambda_func.vector.array[:] = ScalarType(1.0)
+    lambda_func.x.array[:] = ScalarType(1.0)
     F_replace = ufl.replace(F, {lambda_: lambda_func})
     dFdlambda = ufl.derivative(F_replace, lambda_func)
 
@@ -187,7 +185,7 @@ def test_material_param_mu(linear_elasticity_problem):
     # Define a new form to use ufl.derivative for the derivative of F with respect to μ
     DG0 = fem.functionspace(domain, ("DG", 0))
     mu_func = fem.Function(DG0, name="mu")
-    mu_func.vector.array[:] = ScalarType(1.25)
+    mu_func.x.array[:] = ScalarType(1.25)
     F_replace = ufl.replace(F, {mu: mu_func})
     dFdmu = ufl.derivative(F_replace, mu_func)
 

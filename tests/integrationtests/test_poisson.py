@@ -76,7 +76,6 @@ def poisson_problem():
         uh,
         bcs=bcs,
         graph=graph_,
-        petsc_options_prefix="nls_",
     )
     solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph=graph_)
     solver.solve(uh, graph=graph_)
@@ -166,10 +165,10 @@ def test_Poisson_dJdf(poisson_problem):
     gradient = adjoint_solution.transpose() @ dFdf + dJdf
 
     gradient_df = fem.Function(W, name="dJdf")
-    gradient_df.vector.setArray(gradient)
+    gradient_df.x.array[:] = gradient
 
     # Compare automatic differentiation result with explicit adjoint calculation
-    assert np.allclose(graph_.backprop(id(J), id(f)), gradient_df.vector.array[:])
+    assert np.allclose(graph_.backprop(id(J), id(f)), gradient_df.x.array[:])
 
 
 def test_Poisson_dJdnu(poisson_problem):
@@ -208,7 +207,7 @@ def test_Poisson_dJdnu(poisson_problem):
 
     DG0 = fem.functionspace(domain, ("DG", 0))
     nu_function = fem.Function(DG0, name="nu")
-    nu_function.vector.array[:] = ScalarType(1.0)
+    nu_function.x.array[:] = ScalarType(1.0)
 
     J_form_replaced = ufl.replace(J_form, {nu: nu_function})
     F_replaced = ufl.replace(F, {nu: nu_function})
@@ -304,7 +303,7 @@ def test_Poisson_dJdbc(poisson_problem):
     gradient = matrix @ gradient
 
     gradient_bc = fem.Function(V, name="dJdbc")
-    gradient_bc.vector.setArray(gradient)
+    gradient_bc.x.array[:] = gradient
 
     # Compare automatic differentiation result with explicit adjoint calculation
-    assert np.allclose(graph_.backprop(id(J), id(uD_L)), gradient_bc.vector.array[:])
+    assert np.allclose(graph_.backprop(id(J), id(uD_L)), gradient_bc.x.array[:])

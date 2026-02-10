@@ -46,15 +46,13 @@ def heat_equation_problem():
         ufl.inner((u_next - u_prev) / dt_constant, v) * ufl.dx
         + ufl.inner(ufl.grad(u_next), ufl.grad(v)) * ufl.dx
     )
-    problem = fem.petsc.NewtonSolverNonlinearProblem(
-        F, u_next, petsc_options_prefix="nls_"
-    )
+    problem = fem.petsc.NewtonSolverNonlinearProblem(F, u_next)
     solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem)
 
     t = 0.0
     while t < T:
         solver.solve(u_next)
-        u_prev.vector[:] = u_next.vector[:]
+        u_prev.x.array[:] = u_next.x.array[:]
         t += dt
     true_data = u_next.copy()
 
@@ -84,9 +82,7 @@ def heat_equation_problem():
             ufl.inner((u_next - u_prev) / dt_constant, v) * ufl.dx
             + ufl.inner(ufl.grad(u_next), ufl.grad(v)) * ufl.dx
         )
-        problem = fem.petsc.NewtonSolverNonlinearProblem(
-            F, u_next, graph=graph_, petsc_options_prefix="nls_"
-        )
+        problem = fem.petsc.NewtonSolverNonlinearProblem(F, u_next, graph=graph_)
         solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph=graph_)
 
         solver.solve(u_next, graph=graph_, version=i)
