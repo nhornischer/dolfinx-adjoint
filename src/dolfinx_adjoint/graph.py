@@ -1,6 +1,5 @@
 import os
 
-import matplotlib.pyplot as plt
 import networkx as nx
 
 from .edge import Edge
@@ -205,6 +204,8 @@ class Graph:
         return nx_graph
 
     def visualise(self, filename="graph.pdf", style="planar", print_edge_labels=True):
+        import matplotlib.pyplot as plt
+
         """Visualise the graph
 
         Args:
