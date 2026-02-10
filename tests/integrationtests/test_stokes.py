@@ -10,7 +10,8 @@ import gmsh
 import numpy as np
 import pytest
 import ufl
-from dolfinx import fem, io, nls
+from dolfinx import fem, nls
+from dolfinx.io import gmsh as gmshio
 from mpi4py import MPI
 from petsc4py.PETSc import ScalarType
 
@@ -82,17 +83,20 @@ def stokes_problem():
         gmsh.model.mesh.field.setAsBackgroundMesh(5)
         gmsh.model.mesh.generate(2)
 
-    mesh, _, ft = io.gmshio.model_to_mesh(gmsh.model, mesh_comm, model_rank, gdim=gdim)
+    mesh_data = gmshio.model_to_mesh(gmsh.model, mesh_comm, model_rank, gdim=gdim)
+    mesh = mesh_data.mesh
+    ft = mesh_data.facet_tags
     ft.name = "Facet markers"
 
     graph_ = Graph()
 
     # Function spaces as Mixed Element space
-    from basix.ufl import element
-    u_elem = element("Lagrange", mesh.basix_cell(), 2, shape = (2,))
+    from basix.ufl import element, mixed_element
+
+    u_elem = element("Lagrange", mesh.basix_cell(), 2, shape=(2,))
     p_elem = element("Lagrange", mesh.basix_cell(), 1)
 
-    v_elem = ufl.MixedElement([u_elem, p_elem])
+    v_elem = mixed_element([u_elem, p_elem])
     V = fem.functionspace(mesh, v_elem)
     V_u, V_u_map = V.sub(0).collapse()
     V_p, V_p_map = V.sub(1).collapse()
@@ -154,7 +158,7 @@ def stokes_problem():
     F = a - L
 
     # Define the problem solver
-    problem = fem.petsc.NonlinearProblem(F, up, bcs=bcs, graph=graph_)
+    problem = fem.petsc.NewtonSolverNonlinearProblem(F, up, bcs=bcs, graph=graph_)
     solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph=graph_)
 
     solver.solve(up, graph=graph_)
@@ -233,7 +237,7 @@ def test_Stokes_dJdnu(stokes_problem):
 
     DG0 = fem.functionspace(mesh, ("DG", 0))
     nu_function = fem.Function(DG0, name="nu")
-    nu_function.vector.array[:] = ScalarType(1.0)
+    nu_function.x.array[:] = ScalarType(1.0)
 
     J_form_replaced = ufl.replace(J_form, {nu: nu_function})
     F_replaced = ufl.replace(F, {nu: nu_function})

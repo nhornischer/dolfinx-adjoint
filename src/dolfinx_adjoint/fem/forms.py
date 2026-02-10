@@ -151,9 +151,9 @@ class Form_Constant_Edge(graph.Edge):
 
         # Create a function based on the constant in order to use ufl.derivative
         domain = constant.domain
-        DG0 = fem.FunctionSpace(domain.mesh, ("DG", 0))
+        DG0 = fem.functionspace(domain.mesh, ("DG", 0))
         function = fem.Function(DG0)
-        function.vector.array[:] = constant.c
+        function.x.array[:] = constant.c
 
         replaced_form = ufl.replace(ufl_form, {constant: function})
 

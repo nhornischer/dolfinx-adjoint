@@ -1,6 +1,5 @@
 import os
 
-import matplotlib.pyplot as plt
 import networkx as nx
 
 from .edge import Edge
@@ -125,7 +124,13 @@ class Graph:
             detailed (bool, optional): Whether to print the graph in detailed mode. Defaults to False.
 
         """
-        print("#" * os.get_terminal_size().columns)
+        try:
+            terminal_width = os.get_terminal_size().columns
+        except OSError:
+            # Fallback for environments without a terminal (e.g., Jupyter notebooks)
+            terminal_width = 80
+
+        print("#" * terminal_width)
 
         # Prints the graph object define in the __str__ method
         print(self)
@@ -139,7 +144,7 @@ class Graph:
             print(f"\t{edge}")
 
         if not detailed:
-            print("#" * os.get_terminal_size().columns)
+            print("#" * terminal_width)
         else:
             print("Gradient functions:")
             for node in self.nodes:
@@ -155,7 +160,7 @@ class Graph:
                 print(f"\t{edge}")
                 for next_function in edge.next_functions:
                     print(f"\t\t{next_function}")
-            print("#" * os.get_terminal_size().columns)
+            print("#" * terminal_width)
 
     def __str__(self):
         """String representation of the graph
@@ -199,6 +204,8 @@ class Graph:
         return nx_graph
 
     def visualise(self, filename="graph.pdf", style="planar", print_edge_labels=True):
+        import matplotlib.pyplot as plt
+
         """Visualise the graph
 
         Args:

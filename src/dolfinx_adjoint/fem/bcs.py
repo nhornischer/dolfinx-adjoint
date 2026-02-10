@@ -85,7 +85,7 @@ class DirichletBC_Edge(graph.Edge):
         # space of the boundary condition and the function space of the problem are different.
         # The map is stored as an array where the index is equivalent to the index in the correct
         # space and the value is the index in the wrong space.
-        if map == None:
+        if map is None:
             output = self.input_value @ matrix
         else:
             output = (self.input_value @ matrix)[map]

@@ -5,4 +5,4 @@ from .bcs import *
 from .forms import *
 from .function import *
 from .petsc import *
-from .petsc import NonlinearProblem
+from .petsc import NewtonSolverNonlinearProblem
