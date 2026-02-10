@@ -1,7 +1,7 @@
 import ufl
 from dolfinx import fem, la
 from dolfinx.fem.petsc import NewtonSolverNonlinearProblem as NonlinearProblemBase
-from dolfinx.fem.petsc import set_bc, assign, create_vector
+from dolfinx.fem.petsc import assign, create_vector, set_bc
 from petsc4py import PETSc
 
 import dolfinx_adjoint.graph as graph
