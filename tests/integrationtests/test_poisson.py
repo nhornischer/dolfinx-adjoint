@@ -6,10 +6,12 @@ correctly computes gradients using the adjoint method by comparing against
 explicit adjoint calculations.
 """
 
+import dolfinx
 import numpy as np
 import pytest
 import ufl
 from dolfinx import fem, mesh, nls
+from dolfinx.fem.petsc import LinearProblem
 from mpi4py import MPI
 from petsc4py.PETSc import ScalarType
 
@@ -42,7 +44,6 @@ def poisson_problem():
 
     # Define the boundary and the boundary conditions
     domain.topology.create_connectivity(domain.topology.dim - 1, domain.topology.dim)
-    boundary_facets = mesh.exterior_facet_indices(domain.topology)
 
     uD_L = fem.Function(V, name="u_D", graph=graph_)
     uD_L.interpolate(lambda x: 1.0 + 0.0 * x[0])
@@ -58,17 +59,21 @@ def poisson_problem():
     boundary_dofs_T = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[1], 1.0))
     boundary_dofs_B = fem.locate_dofs_geometrical(V, lambda x: np.isclose(x[1], 0.0))
 
-    # Store all boundary dofs in one array for testing
-    bc_dofs_total = np.concatenate(
-        [boundary_dofs_L, boundary_dofs_R, boundary_dofs_T, boundary_dofs_B]
-    )
-
     bcs = [
         fem.dirichletbc(uD_L, boundary_dofs_L, graph=graph_),
         fem.dirichletbc(uD_R, boundary_dofs_R),
         fem.dirichletbc(uD_T, boundary_dofs_T),
         fem.dirichletbc(uD_B, boundary_dofs_B),
     ]
+
+    # Boundary conditions of adjoint must be set to zero since there cannot be any contribution from the boundary to the gradient of J with respect to variables except for the boundary condition itself.
+    bcs_adjoint = fem.dirichletbc(
+        ScalarType(0.0),
+        np.concatenate(
+            [boundary_dofs_L, boundary_dofs_R, boundary_dofs_T, boundary_dofs_B]
+        ),
+        V,
+    )
 
     # Define the problem solver and solve it
     problem = fem.petsc.NewtonSolverNonlinearProblem(
@@ -95,21 +100,15 @@ def poisson_problem():
     return {
         "graph_": graph_,
         "domain": domain,
-        "V": V,
-        "W": W,
         "uh": uh,
-        "v": v,
         "f": f,
         "nu": nu,
         "F": F,
         "uD_L": uD_L,
         "boundary_dofs_L": boundary_dofs_L,
-        "bc_dofs_total": bc_dofs_total,
-        "bcs": bcs,
-        "problem": problem,
-        "g": g,
         "J_form": J_form,
         "J": J,
+        "bcs_adjoint": [bcs_adjoint],
     }
 
 
@@ -141,9 +140,7 @@ def test_Poisson_dJdf(poisson_problem):
     uh = poisson_problem["uh"]
     f = poisson_problem["f"]
     J_form = poisson_problem["J_form"]
-    bcs = poisson_problem["bcs"]
-    bc_dofs_total = poisson_problem["bc_dofs_total"]
-    W = poisson_problem["W"]
+    bcs_adjoint = poisson_problem["bcs_adjoint"]
     graph_ = poisson_problem["graph_"]
     J = poisson_problem["J"]
 
@@ -152,23 +149,17 @@ def test_Poisson_dJdf(poisson_problem):
     dJdu = ufl.derivative(J_form, uh)
     dJdf = ufl.derivative(J_form, f)
 
-    dFdu = fem.assemble_matrix(fem.form(dFdu), bcs=bcs).to_dense()
-    dJdu = fem.assemble_vector(fem.form(dJdu)).array
-    dFdf = fem.assemble_matrix(fem.form(dFdf)).to_dense()
-    dJdf = fem.assemble_vector(fem.form(dJdf)).array
+    adjoint_solution = LinearProblem(
+        ufl.adjoint(dFdu), -dJdu, bcs=bcs_adjoint, petsc_options_prefix="adjoint_"
+    ).solve()
+    gradient = ufl.action(ufl.adjoint(dFdf), adjoint_solution) + dJdf
 
-    # Apply the boundary conditions to the rhs of the adjoint problem
-    for bc_dof in bc_dofs_total:
-        dJdu[int(bc_dof)] = 0
-
-    adjoint_solution = np.linalg.solve(dFdu.transpose(), -dJdu.transpose())
-    gradient = adjoint_solution.transpose() @ dFdf + dJdf
-
-    gradient_df = fem.Function(W, name="dJdf")
-    gradient_df.x.array[:] = gradient
+    gradient_df = dolfinx.fem.assemble_vector(dolfinx.fem.form(gradient))
+    gradient_df.scatter_reverse(dolfinx.la.InsertMode.add)
+    gradient_df.scatter_forward()
 
     # Compare automatic differentiation result with explicit adjoint calculation
-    assert np.allclose(graph_.backprop(id(J), id(f)), gradient_df.x.array[:])
+    assert np.allclose(graph_.backprop(id(J), id(f)), gradient_df.array[:])
 
 
 def test_Poisson_dJdnu(poisson_problem):
@@ -200,8 +191,7 @@ def test_Poisson_dJdnu(poisson_problem):
     uh = poisson_problem["uh"]
     nu = poisson_problem["nu"]
     J_form = poisson_problem["J_form"]
-    bcs = poisson_problem["bcs"]
-    bc_dofs_total = poisson_problem["bc_dofs_total"]
+    bcs_adjoint = poisson_problem["bcs_adjoint"]
     graph_ = poisson_problem["graph_"]
     J = poisson_problem["J"]
 
@@ -217,17 +207,11 @@ def test_Poisson_dJdnu(poisson_problem):
     dFdnu = ufl.derivative(F_replaced, nu_function)
     dFdu = ufl.derivative(F, uh)
 
-    dJdu = fem.assemble_vector(fem.form(dJdu)).array
-    dJdnu = fem.assemble_scalar(fem.form(dJdnu))
-    dFdnu = fem.assemble_vector(fem.form(dFdnu)).array
-    dFdu = fem.assemble_matrix(fem.form(dFdu), bcs=bcs).to_dense()
-
-    # Apply the boundary conditions to the rhs of the adjoint problem
-    for bc_dof in bc_dofs_total:
-        dJdu[int(bc_dof)] = 0
-
-    adjoint_solution = np.linalg.solve(dFdu.transpose(), -dJdu.transpose())
-    gradient = adjoint_solution.transpose() @ dFdnu + dJdnu
+    adjoint_solution = LinearProblem(
+        ufl.adjoint(dFdu), -dJdu, bcs=bcs_adjoint, petsc_options_prefix="adjoint_"
+    ).solve()
+    gradient = ufl.action(ufl.adjoint(dFdnu), adjoint_solution) + dJdnu
+    gradient = dolfinx.fem.assemble_scalar(dolfinx.fem.form(gradient))
 
     # Compare automatic differentiation result with explicit adjoint calculation
     assert np.allclose(graph_.backprop(id(J), id(nu)), gradient)
@@ -273,37 +257,30 @@ def test_Poisson_dJdbc(poisson_problem):
     uh = poisson_problem["uh"]
     uD_L = poisson_problem["uD_L"]
     J_form = poisson_problem["J_form"]
-    bcs = poisson_problem["bcs"]
-    bc_dofs_total = poisson_problem["bc_dofs_total"]
     boundary_dofs_L = poisson_problem["boundary_dofs_L"]
-    V = poisson_problem["V"]
-    problem = poisson_problem["problem"]
+    bcs_adjoint = poisson_problem["bcs_adjoint"]
     graph_ = poisson_problem["graph_"]
     J = poisson_problem["J"]
 
     dFdu = ufl.derivative(F, uh)
     dJdu = ufl.derivative(J_form, uh)
+    dFdbc = ufl.derivative(F, uh, ufl.TrialFunction(uh.function_space))
 
-    dFdu = fem.assemble_matrix(fem.form(dFdu), bcs=bcs).to_dense()
-    dJdu = fem.assemble_vector(fem.form(dJdu)).array
-    dFdbc = fem.assemble_matrix(problem._a).to_dense()
+    adjoint_solution = LinearProblem(
+        ufl.adjoint(dFdu), -dJdu, bcs=bcs_adjoint, petsc_options_prefix="adjoint_"
+    ).solve()
+    gradient = ufl.action(ufl.adjoint(dFdbc), adjoint_solution)
 
-    # Apply the boundary conditions to the rhs of the adjoint problem
-    for bc_dof in bc_dofs_total:
-        dJdu[int(bc_dof)] = 0
-
-    adjoint_solution = np.linalg.solve(dFdu.transpose(), -dJdu.transpose())
-    gradient = adjoint_solution.transpose() @ dFdbc
+    gradient = dolfinx.fem.assemble_vector(dolfinx.fem.form(gradient))
+    gradient.scatter_reverse(dolfinx.la.InsertMode.add)
+    gradient.scatter_forward()
 
     # Extract gradient values only at the boundary
-    matrix = np.zeros((len(gradient), len(gradient)))
+    matrix = np.zeros((len(gradient.array), len(gradient.array)))
     for index in boundary_dofs_L:
         matrix[index, index] = 1.0
 
-    gradient = matrix @ gradient
-
-    gradient_bc = fem.Function(V, name="dJdbc")
-    gradient_bc.x.array[:] = gradient
+    gradient = matrix @ gradient.array
 
     # Compare automatic differentiation result with explicit adjoint calculation
-    assert np.allclose(graph_.backprop(id(J), id(uD_L)), gradient_bc.x.array[:])
+    assert np.allclose(graph_.backprop(id(J), id(uD_L)), gradient)
