@@ -86,10 +86,8 @@ def poisson_problem():
     solver.solve(uh, graph=graph_)
 
     # Define profile g
-    g = fem.Function(W, name="g")
-    g.interpolate(
-        lambda x: 1 / (2 * np.pi**2) * np.sin(np.pi * x[0]) * np.sin(np.pi * x[1])
-    )
+    x = ufl.SpatialCoordinate(domain)
+    g = (1 / (2 * np.pi**2)) * ufl.sin(np.pi * x[0]) * ufl.sin(np.pi * x[1])
 
     # Define the objective function
     alpha = fem.Constant(domain, ScalarType(1e-6), name="α")
