@@ -23,13 +23,16 @@ from dolfinx_adjoint import *
     params=[mesh.CellType.triangle, mesh.CellType.quadrilateral],
     ids=["triangle", "quadrilateral"],
 )
-def poisson_problem(request):
+def cell_type(request):
+    return request.param
+
+
+@pytest.fixture(scope="module")
+def poisson_problem(cell_type):
     """Set up the Poisson problem that will be used in all tests."""
     # Create graph object to store the computational graph
     graph_ = Graph()
 
-    # Define mesh and finite element space
-    cell_type = request.param
     print(f"Testing with cell type: {cell_type}")
     domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, cell_type)
     V = fem.functionspace(domain, ("Lagrange", 1))
