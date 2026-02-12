@@ -116,6 +116,31 @@ def poisson_problem(request):
     }
 
 
+def test_Poisson_graph_recalculate(poisson_problem):
+    """Ensure graph.recalculate updates J after modifying f."""
+    graph_ = poisson_problem["graph_"]
+    f = poisson_problem["f"]
+    J = poisson_problem["J"]
+
+    J_node = graph_.get_node(id(J))
+    assert J_node is not None
+
+    comm = f.function_space.mesh.comm
+    J0 = comm.allreduce(J_node.object, op=MPI.SUM)
+
+    f_org = f.x.array.copy()
+
+    f.x.array[:] = f_org + 0.5
+    graph_.recalculate()
+    J1 = comm.allreduce(J_node.object, op=MPI.SUM)
+    assert not np.isclose(J1, J0)
+
+    f.x.array[:] = f_org
+    graph_.recalculate()
+    J2 = comm.allreduce(J_node.object, op=MPI.SUM)
+    np.testing.assert_allclose(J2, J0)
+
+
 def test_Poisson_dJdf(poisson_problem):
     """
     Test gradient of J with respect to forcing term f.
