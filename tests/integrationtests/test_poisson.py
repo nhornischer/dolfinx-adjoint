@@ -18,14 +18,20 @@ from petsc4py.PETSc import ScalarType
 from dolfinx_adjoint import *
 
 
-@pytest.fixture(scope="module")
-def poisson_problem():
+@pytest.fixture(
+    scope="module",
+    params=[mesh.CellType.triangle, mesh.CellType.quadrilateral],
+    ids=["triangle", "quadrilateral"],
+)
+def poisson_problem(request):
     """Set up the Poisson problem that will be used in all tests."""
     # Create graph object to store the computational graph
     graph_ = Graph()
 
     # Define mesh and finite element space
-    domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, mesh.CellType.triangle)
+    cell_type = request.param
+    print(f"Testing with cell type: {cell_type}")
+    domain = mesh.create_unit_square(MPI.COMM_WORLD, 64, 64, cell_type)
     V = fem.functionspace(domain, ("Lagrange", 1))
     W = fem.functionspace(domain, ("DG", 0))
 
