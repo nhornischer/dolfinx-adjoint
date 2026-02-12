@@ -1,13 +1,7 @@
-import dolfinx
 import numpy as np
 import pytest
-import ufl
-from dolfinx import fem, mesh, nls
-from dolfinx.fem.petsc import LinearProblem
+from dolfinx import fem
 from mpi4py import MPI
-from petsc4py.PETSc import ScalarType
-
-from dolfinx_adjoint import *
 
 
 def _convergence_rates(errors: np.ndarray, steps: np.ndarray) -> list:

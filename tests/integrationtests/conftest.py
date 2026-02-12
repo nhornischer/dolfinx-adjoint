@@ -6,16 +6,14 @@ correctly computes gradients using the adjoint method by comparing against
 explicit adjoint calculations.
 """
 
-import dolfinx
 import numpy as np
 import pytest
 import ufl
-from dolfinx import fem, mesh, nls
-from dolfinx.fem.petsc import LinearProblem
+from dolfinx import mesh
 from mpi4py import MPI
 from petsc4py.PETSc import ScalarType
 
-from dolfinx_adjoint import *
+from dolfinx_adjoint import Graph, fem, nls
 
 
 @pytest.fixture(

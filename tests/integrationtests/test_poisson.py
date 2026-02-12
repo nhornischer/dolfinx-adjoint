@@ -8,14 +8,10 @@ explicit adjoint calculations.
 
 import dolfinx
 import numpy as np
-import pytest
 import ufl
-from dolfinx import fem, mesh, nls
+from dolfinx import fem
 from dolfinx.fem.petsc import LinearProblem
-from mpi4py import MPI
 from petsc4py.PETSc import ScalarType
-
-from dolfinx_adjoint import *
 
 
 def test_Poisson_dJdf(poisson_problem):
