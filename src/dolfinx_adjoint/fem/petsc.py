@@ -1,13 +1,15 @@
 import ufl
 from dolfinx import fem, la
-from dolfinx.fem.petsc import NewtonSolverNonlinearProblem as NonlinearProblemBase
+from dolfinx.fem.petsc import (
+    NewtonSolverNonlinearProblem as NewtonSolverNonlinearProblemBase,
+)
 from dolfinx.fem.petsc import assign, create_vector, set_bc
 from petsc4py import PETSc
 
 import dolfinx_adjoint.graph as graph
 
 
-class NewtonSolverNonlinearProblem(NonlinearProblemBase):
+class NewtonSolverNonlinearProblem(NewtonSolverNonlinearProblemBase):
     """OVERLOADS: :py:class:`dolfinx.fem.petsc.NewtonSolverNonlinearProblem`.
     Nonlinear problem class for solving the non-linear problem
 
@@ -38,7 +40,7 @@ class NewtonSolverNonlinearProblem(NonlinearProblemBase):
             F_form = args[0]
             u = args[1]
 
-            problem_node = NonlinearProblemNode(self, F_form, u, **kwargs)
+            problem_node = NewtonSolverNonlinearProblemNode(self, F_form, u, **kwargs)
             _graph.add_node(problem_node)
 
             u_node = _graph.get_node(id(u))
@@ -50,7 +52,7 @@ class NewtonSolverNonlinearProblem(NonlinearProblemBase):
                 coefficient_node = _graph.get_node(id(coefficient))
                 if not coefficient_node == None:
                     ctx = [F_form, u_node, coefficient, kwargs.get("bcs"), _graph]
-                    coefficient_edge = NonlinearProblem_Coefficient_Edge(
+                    coefficient_edge = NewtonSolverNonlinearProblem_Coefficient_Edge(
                         coefficient_node, problem_node, ctx=ctx
                     )
                     _graph.add_edge(coefficient_edge)
@@ -64,7 +66,7 @@ class NewtonSolverNonlinearProblem(NonlinearProblemBase):
                 constant_node = _graph.get_node(id(constant))
                 if not constant_node == None:
                     ctx = [F_form, u_node, constant, kwargs.get("bcs")]
-                    constant_edge = NonlinearProblem_Constant_Edge(
+                    constant_edge = NewtonSolverNonlinearProblem_Constant_Edge(
                         constant_node, problem_node, ctx=ctx
                     )
                     _graph.add_edge(constant_edge)
@@ -77,7 +79,7 @@ class NewtonSolverNonlinearProblem(NonlinearProblemBase):
                     bc_node = _graph.get_node(id(bc))
                     if not bc_node == None:
                         ctx = [F_form, u_node, kwargs.get("bcs"), self._a]
-                        bc_edge = NonlinearProblem_Boundary_Edge(
+                        bc_edge = NewtonSolverNonlinearProblem_Boundary_Edge(
                             bc_node, problem_node, ctx=ctx
                         )
                         _graph.add_edge(bc_edge)
@@ -85,14 +87,14 @@ class NewtonSolverNonlinearProblem(NonlinearProblemBase):
                         bc_edge.set_next_functions(bc_node.get_gradFuncs())
 
 
-class NonlinearProblemNode(graph.AbstractNode):
+class NewtonSolverNonlinearProblemNode(graph.AbstractNode):
     """
     Node for the initialization of :py:class:`dolfinx.fem.petsc.NewtonSolverNonlinearProblem`.
     """
 
     def __init__(self, object: object, F: ufl.form.Form, u: fem.Function, **kwargs):
         """
-        Constructor for the NonlinearProblemNode.
+        Constructor for the NewtonSolverNonlinearProblemNode.
 
         In order to create the NewtonSolverNonlinearProblem in the forward pass,
         ufl form and the function of the nonlinear problem are needed.
@@ -114,12 +116,12 @@ class NonlinearProblemNode(graph.AbstractNode):
         The initialization of the NewtonSolverNonlinearProblem object.
 
         """
-        output = NonlinearProblemBase(self.F, self.u, self.kwargs)
+        output = NewtonSolverNonlinearProblemBase(self.F, self.u, self.kwargs)
         self.object = output
         return output
 
 
-class NonlinearProblem_Coefficient_Edge(graph.Edge):
+class NewtonSolverNonlinearProblem_Coefficient_Edge(graph.Edge):
     """
     Edge providing the adjoint equation for the derivative of the solution to the nonlinear problem with respect to the coefficient.
 
@@ -175,7 +177,7 @@ class NonlinearProblem_Coefficient_Edge(graph.Edge):
         return dFdm.transpose() * adjoint_solution.x.petsc_vec
 
 
-class NonlinearProblem_Constant_Edge(graph.Edge):
+class NewtonSolverNonlinearProblem_Constant_Edge(graph.Edge):
     """
     Edge providing the adjoint equation for the derivative of the solution to the nonlinear problem with respect to the constant.
 
@@ -232,7 +234,7 @@ class NonlinearProblem_Constant_Edge(graph.Edge):
         return adjoint_solution.x.petsc_vec.dot(dFdm)
 
 
-class NonlinearProblem_Boundary_Edge(graph.Edge):
+class NewtonSolverNonlinearProblem_Boundary_Edge(graph.Edge):
     """
     Edge providing the adjoint equation for the derivative of the solution to the nonlinear problem with respect to the boundary condition.
 
