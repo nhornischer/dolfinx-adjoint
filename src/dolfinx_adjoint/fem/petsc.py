@@ -3,10 +3,137 @@ from dolfinx import fem, la
 from dolfinx.fem.petsc import (
     NewtonSolverNonlinearProblem as NewtonSolverNonlinearProblemBase,
 )
-from dolfinx.fem.petsc import assign, create_vector, set_bc
+from dolfinx.fem.petsc import NonlinearProblem as NonlinearProblemBase
+from dolfinx.fem.petsc import (
+    assign,
+    create_vector,
+    set_bc,
+)
 from petsc4py import PETSc
 
 import dolfinx_adjoint.graph as graph
+
+
+class NonlinearProblem(NonlinearProblemBase):
+    """OVERLOADS: :py:class:`dolfinx.fem.petsc.NonlinearProblem`.
+    Nonlinear problem class for solving the non-linear problem
+
+    The overloaded class modifies the initialization of the NonlinearProblem to keep track of the dependencies
+    in the computational graph and the adjoint equations. The original functionality is kept.
+
+    """
+
+    def __init__(self, *args, **kwargs):
+        """OVERLOADS: :py:func:`dolfinx.fem.petsc.NewtonSolverNonlinearProblem.__init__`.
+        Initialize solver for solving a non-linear problem using Newton's method
+
+        Args:
+            args: Arguments to :py:func:`dolfinx.fem.petsc.NewtonSolverNonlinearProblem.__init__`.
+            kwargs: Keyword arguments to :py:func:`dolfinx.fem.petsc.NewtonSolverNonlinearProblem.__init__`.
+            graph: An additional keyword argument to specifier whether the assemble
+                operation should be added to the graph. If not present, the original functionality
+                of dolfinx is used without any additional functionalities.
+
+        """
+        if not "graph" in kwargs:
+            super().__init__(*args, **kwargs)
+        else:
+            _graph = kwargs["graph"]
+            del kwargs["graph"]
+            super().__init__(*args, **kwargs)
+
+            F_form = args[0]
+            u = args[1]
+
+            problem_node = NonlinearProblemNode(self, F_form, u, **kwargs)
+            _graph.add_node(problem_node)
+
+            u_node = _graph.get_node(id(u))
+
+            # Creating and adding edges to the graph if the coefficients are in the graph
+            for coefficient in F_form.coefficients():
+                if coefficient == u:
+                    continue
+                coefficient_node = _graph.get_node(id(coefficient))
+                if not coefficient_node == None:
+                    ctx = [F_form, u_node, coefficient, kwargs.get("bcs"), _graph]
+                    coefficient_edge = NonlinearProblem_Coefficient_Edge(
+                        coefficient_node, problem_node, ctx=ctx
+                    )
+                    _graph.add_edge(coefficient_edge)
+                    problem_node.append_gradFuncs(coefficient_edge)
+                    coefficient_edge.set_next_functions(
+                        coefficient_node.get_gradFuncs()
+                    )
+
+            # Creating and adding edges to the graph if the constants are in the graph
+            for constant in F_form.constants():
+                constant_node = _graph.get_node(id(constant))
+                if not constant_node == None:
+                    ctx = [F_form, u_node, constant, kwargs.get("bcs")]
+                    constant_edge = NonlinearProblem_Constant_Edge(
+                        constant_node, problem_node, ctx=ctx
+                    )
+                    _graph.add_edge(constant_edge)
+                    problem_node.append_gradFuncs(constant_edge)
+                    constant_edge.set_next_functions(constant_node.get_gradFuncs())
+
+            # Creating and adding edges to the graph if the boundary conditions are in the graph
+            if "bcs" in kwargs.keys() and not kwargs.get("bcs") == None:
+                for bc in kwargs.get("bcs"):
+                    bc_node = _graph.get_node(id(bc))
+                    if not bc_node == None:
+                        ctx = [F_form, u_node, kwargs.get("bcs"), self._J]
+                        bc_edge = NonlinearProblem_Boundary_Edge(
+                            bc_node, problem_node, ctx=ctx
+                        )
+                        _graph.add_edge(bc_edge)
+                        problem_node.append_gradFuncs(bc_edge)
+                        bc_edge.set_next_functions(bc_node.get_gradFuncs())
+
+    def solve(self, *args, **kwargs):
+        """OVERLOADS: :py:func:`dolfinx.fem.petsc.NonlinearProblem.solve`
+        Solve non-linear problem into function u. Returns the number of iterations and if the solver converged.
+
+        Args:
+            args: Arguments to :py:func:`dolfinx.fem.petsc.NonlinearProblem.solve`
+            kwargs: Keyword arguments to :py:func:`dolfinx.fem.petsc.NonlinearProblem.solve`
+            graph (graph, optional): An additional keyword argument to specifier whether the assemble
+                operation should be added to the graph. If not present, the original functionality
+                of dolfinx is used without any additional functionalities.
+
+        Returns:
+            fem.Function: The solution function u after solving the nonlinear problem.
+
+        """
+        # Add the edge from the NonlinearProblem to the Function
+        if "graph" not in kwargs:
+            output = super().solve(*args, **kwargs)
+        else:
+            if "version" in kwargs:
+                version = kwargs["version"]
+                del kwargs["version"]
+            else:
+                version = 1
+            _graph = kwargs["graph"]
+            del kwargs["graph"]
+
+            problem_node = _graph.get_node(id(self))
+            solve_node = SolveNode(
+                self._u, problem_node, version=version, name=self._u.name
+            )
+            _graph.add_node(solve_node)
+
+            # Creating and adding the edge to the graph
+            if not problem_node == None:
+                function_edge = graph.Edge(problem_node, solve_node)
+                solve_node.set_gradFuncs([function_edge])
+                _graph.add_edge(function_edge)
+                function_edge.set_next_functions(problem_node.get_gradFuncs())
+
+            output = super().solve(*args, **kwargs)
+
+        return output
 
 
 class NewtonSolverNonlinearProblem(NewtonSolverNonlinearProblemBase):
@@ -52,7 +179,7 @@ class NewtonSolverNonlinearProblem(NewtonSolverNonlinearProblemBase):
                 coefficient_node = _graph.get_node(id(coefficient))
                 if not coefficient_node == None:
                     ctx = [F_form, u_node, coefficient, kwargs.get("bcs"), _graph]
-                    coefficient_edge = NewtonSolverNonlinearProblem_Coefficient_Edge(
+                    coefficient_edge = NonlinearProblem_Coefficient_Edge(
                         coefficient_node, problem_node, ctx=ctx
                     )
                     _graph.add_edge(coefficient_edge)
@@ -66,7 +193,7 @@ class NewtonSolverNonlinearProblem(NewtonSolverNonlinearProblemBase):
                 constant_node = _graph.get_node(id(constant))
                 if not constant_node == None:
                     ctx = [F_form, u_node, constant, kwargs.get("bcs")]
-                    constant_edge = NewtonSolverNonlinearProblem_Constant_Edge(
+                    constant_edge = NonlinearProblem_Constant_Edge(
                         constant_node, problem_node, ctx=ctx
                     )
                     _graph.add_edge(constant_edge)
@@ -79,12 +206,80 @@ class NewtonSolverNonlinearProblem(NewtonSolverNonlinearProblemBase):
                     bc_node = _graph.get_node(id(bc))
                     if not bc_node == None:
                         ctx = [F_form, u_node, kwargs.get("bcs"), self._a]
-                        bc_edge = NewtonSolverNonlinearProblem_Boundary_Edge(
+                        bc_edge = NonlinearProblem_Boundary_Edge(
                             bc_node, problem_node, ctx=ctx
                         )
                         _graph.add_edge(bc_edge)
                         problem_node.append_gradFuncs(bc_edge)
                         bc_edge.set_next_functions(bc_node.get_gradFuncs())
+
+
+class NonlinearProblemNode(graph.AbstractNode):
+    """
+    Node for the initialization of :py:class:`dolfinx.fem.petsc.NonlinearProblem`.
+    """
+
+    def __init__(self, object: object, F: ufl.form.Form, u: fem.Function, **kwargs):
+        """
+        Constructor for the NonlinearProblemNode.
+
+        In order to create the NonlinearProblem in the forward pass,
+        ufl form and the function of the nonlinear problem are needed.
+
+        Args:
+            object (object): The NonlinearProblem object.
+            F (ufl.form.Form): The form of the nonlinear problem.
+            u (fem.Function): The solution of the nonlinear problem.
+            kwargs: Additional keyword arguments to be passed to the super class.
+
+        """
+        super().__init__(object, name="NonlinearProblem")
+        self.F = F
+        self.u = u
+        self.kwargs = kwargs
+
+    def __call__(self):
+        """
+        The initialization of the NonlinearProblem object.
+
+        """
+        output = NonlinearProblemBase(self.F, self.u, **self.kwargs)
+        self.object = output
+        return output
+
+
+class SolveNode(graph.Node):
+    """
+    Node for the operation :py:func:`dolfinx.nls.petsc.NewtonSolver.solve`
+
+    """
+
+    def __init__(self, object: object, problemNode: graph.Node, name="solve", **kwargs):
+        """
+        Constructor for the SolveNode
+
+        In order to solve the non-linear problem associated with the NewtonSolver,
+        the solverNode storing the NewtonSolver and the non-linear problem are needed.
+
+        Args:
+            object (object): The object to be wrapped in the node
+            solverNode (graph.Node): The node storing the NewtonSolver
+            name (str, optional): The name of the node
+            kwargs (optional): Additional keyword arguments to be passed to the :py:class:`dolfinx_adjoint.graph.AbstractNode` constructor
+
+        """
+        super().__init__(object, name=name, **kwargs)
+        self.problemNode = problemNode
+        self.initial_values = object.x.array.copy()
+
+    def __call__(self):
+        """
+        The call method to solve the non-linear problem associated with the NewtonSolver
+
+        """
+
+        self.object.x.array[:] = self.initial_values[:]
+        self.problemNode.object.solve()
 
 
 class NewtonSolverNonlinearProblemNode(graph.AbstractNode):
@@ -121,7 +316,7 @@ class NewtonSolverNonlinearProblemNode(graph.AbstractNode):
         return output
 
 
-class NewtonSolverNonlinearProblem_Coefficient_Edge(graph.Edge):
+class NonlinearProblem_Coefficient_Edge(graph.Edge):
     """
     Edge providing the adjoint equation for the derivative of the solution to the nonlinear problem with respect to the coefficient.
 
@@ -177,7 +372,7 @@ class NewtonSolverNonlinearProblem_Coefficient_Edge(graph.Edge):
         return dFdm.transpose() * adjoint_solution.x.petsc_vec
 
 
-class NewtonSolverNonlinearProblem_Constant_Edge(graph.Edge):
+class NonlinearProblem_Constant_Edge(graph.Edge):
     """
     Edge providing the adjoint equation for the derivative of the solution to the nonlinear problem with respect to the constant.
 
@@ -234,7 +429,7 @@ class NewtonSolverNonlinearProblem_Constant_Edge(graph.Edge):
         return adjoint_solution.x.petsc_vec.dot(dFdm)
 
 
-class NewtonSolverNonlinearProblem_Boundary_Edge(graph.Edge):
+class NonlinearProblem_Boundary_Edge(graph.Edge):
     """
     Edge providing the adjoint equation for the derivative of the solution to the nonlinear problem with respect to the boundary condition.
 

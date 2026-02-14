@@ -25,8 +25,16 @@ def cell_type(request):
     return request.param
 
 
+@pytest.fixture(
+    scope="module",
+    params=["nonlinear", "nonlinear_newton"],
+)
+def solver(request):
+    return request.param
+
+
 @pytest.fixture(scope="module")
-def poisson_problem(cell_type):
+def poisson_problem(cell_type, solver: bool):
     """Set up the Poisson problem that will be used in all tests."""
     # Create graph object to store the computational graph
     graph_ = Graph()
@@ -83,14 +91,24 @@ def poisson_problem(cell_type):
     )
 
     # Define the problem solver and solve it
-    problem = fem.petsc.NewtonSolverNonlinearProblem(
-        F,
-        uh,
-        bcs=bcs,
-        graph=graph_,
-    )
-    solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph=graph_)
-    solver.solve(uh, graph=graph_)
+    if solver == "nonlinear":
+        problem = fem.petsc.NonlinearProblem(
+            F,
+            uh,
+            bcs=bcs,
+            petsc_options_prefix="forward",
+            graph=graph_,
+        )
+        problem.solve(graph=graph_)
+    elif solver == "nonlinear_newton":
+        problem = fem.petsc.NewtonSolverNonlinearProblem(
+            F,
+            uh,
+            bcs=bcs,
+            graph=graph_,
+        )
+        solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph=graph_)
+        solver.solve(uh, graph=graph_)
 
     # Define profile g
     x = ufl.SpatialCoordinate(domain)
