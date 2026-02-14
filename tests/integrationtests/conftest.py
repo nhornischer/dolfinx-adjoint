@@ -27,7 +27,7 @@ def cell_type(request):
 
 @pytest.fixture(
     scope="module",
-    params=["nonlinear", "nonlinear_newton"],
+    params=["nonlinear", "nonlinear_newton", "linear"],
 )
 def solver(request):
     return request.param
@@ -46,6 +46,7 @@ def poisson_problem(cell_type, solver: bool):
 
     # Define the basis functions and parameters
     uh = fem.Function(V, name="uₕ", graph=graph_)
+    u = ufl.TrialFunction(V)
     v = ufl.TestFunction(V)
     f = fem.Function(W, name="f", graph=graph_)
     nu = fem.Constant(domain, ScalarType(1.0), name="ν", graph=graph_)
@@ -53,9 +54,11 @@ def poisson_problem(cell_type, solver: bool):
     f.interpolate(lambda x: x[0] + x[1])
 
     # Define the variational form and the residual equation
-    a = nu * ufl.inner(ufl.grad(uh), ufl.grad(v)) * ufl.dx
+    a = nu * ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
     L = f * v * ufl.dx
     F = a - L
+    if not solver == "linear":
+        F = ufl.replace(F, {u: uh})
 
     # Define the boundary and the boundary conditions
     domain.topology.create_connectivity(domain.topology.dim - 1, domain.topology.dim)
@@ -96,7 +99,7 @@ def poisson_problem(cell_type, solver: bool):
             F,
             uh,
             bcs=bcs,
-            petsc_options_prefix="forward",
+            petsc_options_prefix="forward_nonlinear",
             graph=graph_,
         )
         problem.solve(graph=graph_)
@@ -109,6 +112,15 @@ def poisson_problem(cell_type, solver: bool):
         )
         solver = nls.petsc.NewtonSolver(MPI.COMM_WORLD, problem, graph=graph_)
         solver.solve(uh, graph=graph_)
+    elif solver == "linear":
+        problem = fem.petsc.LinearProblem(
+            *ufl.system(F),
+            u=uh,
+            bcs=bcs,
+            petsc_options_prefix="forward_linear",
+            graph=graph_,
+        )
+        problem.solve(graph=graph_)
 
     # Define profile g
     x = ufl.SpatialCoordinate(domain)
@@ -118,6 +130,10 @@ def poisson_problem(cell_type, solver: bool):
     alpha = fem.Constant(domain, ScalarType(1e-6), name="α")
     J_form = 0.5 * ufl.inner(uh - g, uh - g) * ufl.dx + alpha * ufl.inner(f, f) * ufl.dx
     J = fem.assemble_scalar(fem.form(J_form, graph=graph_), graph=graph_)
+
+    # For testing, the form F needs to be replaced by the form with the solution function uh instead of the TrialFunction u, since the dependencies of uh on the coefficients and constants in the form need to be tracked in the graph for the adjoint calculation. In the linear case, this is not done in the forward solve and thus needs to be done here.
+    if solver == "linear":
+        F = ufl.replace(F, {u: uh})
 
     # Return all components as a dictionary
     return {

@@ -1,5 +1,6 @@
 import ufl
 from dolfinx import fem, la
+from dolfinx.fem.petsc import LinearProblem as LinearProblemBase
 from dolfinx.fem.petsc import (
     NewtonSolverNonlinearProblem as NewtonSolverNonlinearProblemBase,
 )
@@ -12,6 +13,140 @@ from dolfinx.fem.petsc import (
 from petsc4py import PETSc
 
 import dolfinx_adjoint.graph as graph
+
+
+class LinearProblem(LinearProblemBase):
+    """OVERLOADS: :py:class:`dolfinx.fem.petsc.LinearProblem`.
+    Linear problem class for solving the linear problem
+
+    The overloaded class modifies the initialization of the LinearProblem to keep track of the dependencies
+    in the computational graph and the adjoint equations. The original functionality is kept.
+
+    """
+
+    def __init__(self, *args, **kwargs):
+        """OVERLOADS: :py:func:`dolfinx.fem.petsc.LinearProblem.__init__`.
+        Initialize solver for solving a linear problem
+
+        Args:
+            args: Arguments to :py:func:`dolfinx.fem.petsc.LinearProblem.__init__`.
+            kwargs: Keyword arguments to :py:func:`dolfinx.fem.petsc.LinearProblem.__init__`.
+            graph: An additional keyword argument to specifier whether the assemble
+                operation should be added to the graph. If not present, the original functionality
+                of dolfinx is used without any additional functionalities.
+
+        """
+        if not "graph" in kwargs:
+            super().__init__(*args, **kwargs)
+        else:
+            _graph = kwargs["graph"]
+            del kwargs["graph"]
+            super().__init__(*args, **kwargs)
+
+            a = args[0]
+            L = args[1]
+            F_form = a - L
+
+            u = kwargs.get("u")
+            if u == None:
+                raise ValueError(
+                    "The solution function u needs to be provided as a keyword argument for the LinearProblem when using the graph functionalities."
+                )
+
+            problem_node = LinearProblemNode(self, a, L, **kwargs)
+            _graph.add_node(problem_node)
+
+            u_node = _graph.get_node(id(u))
+
+            # Replace Trial Function in the form with the solution function to be able to track the dependencies of the solution function on the coefficients and constants in the form.
+            # By definition, the trial function is always the second argument in the form, thus F_form.arguments()[1] is used to identify the trial function.
+            F_form = ufl.replace(F_form, {F_form.arguments()[1]: u})
+
+            # Creating and adding edges to the graph if the coefficients are in the graph
+            for coefficient in F_form.coefficients():
+                if coefficient == u:
+                    continue
+                coefficient_node = _graph.get_node(id(coefficient))
+                if not coefficient_node == None:
+                    ctx = [F_form, u_node, coefficient, kwargs.get("bcs"), _graph]
+                    coefficient_edge = NonlinearProblem_Coefficient_Edge(
+                        coefficient_node, problem_node, ctx=ctx
+                    )
+                    _graph.add_edge(coefficient_edge)
+                    problem_node.append_gradFuncs(coefficient_edge)
+                    coefficient_edge.set_next_functions(
+                        coefficient_node.get_gradFuncs()
+                    )
+
+            # Creating and adding edges to the graph if the constants are in the graph
+            for constant in F_form.constants():
+                constant_node = _graph.get_node(id(constant))
+                if not constant_node == None:
+                    ctx = [F_form, u_node, constant, kwargs.get("bcs")]
+                    constant_edge = NonlinearProblem_Constant_Edge(
+                        constant_node, problem_node, ctx=ctx
+                    )
+                    _graph.add_edge(constant_edge)
+                    problem_node.append_gradFuncs(constant_edge)
+                    constant_edge.set_next_functions(constant_node.get_gradFuncs())
+
+            # Creating and adding edges to the graph if the boundary conditions are in the graph
+            if "bcs" in kwargs.keys() and not kwargs.get("bcs") == None:
+                for bc in kwargs.get("bcs"):
+                    bc_node = _graph.get_node(id(bc))
+                    if not bc_node == None:
+                        # For linear problems, dF/dbc is represented by the bilinear form a.
+                        ctx = [F_form, u_node, kwargs.get("bcs"), self._a]
+                        bc_edge = NonlinearProblem_Boundary_Edge(
+                            bc_node, problem_node, ctx=ctx
+                        )
+                        _graph.add_edge(bc_edge)
+                        problem_node.append_gradFuncs(bc_edge)
+                        bc_edge.set_next_functions(bc_node.get_gradFuncs())
+
+    def solve(self, *args, **kwargs):
+        """OVERLOADS: :py:func:`dolfinx.fem.petsc.LinearProblem.solve`
+        Solve linear problem into function u. Returns the number of iterations and if the solver converged.
+
+        Args:
+            args: Arguments to :py:func:`dolfinx.fem.petsc.LinearProblem.solve`
+            kwargs: Keyword arguments to :py:func:`dolfinx.fem.petsc.LinearProblem.solve`
+            graph (graph, optional): An additional keyword argument to specifier whether the assemble
+                operation should be added to the graph. If not present, the original functionality
+                of dolfinx is used without any additional functionalities.
+
+        Returns:
+            fem.Function: The solution function u after solving the linear problem.
+
+        """
+        # Add the edge from the LinearProblem to the Function
+        if "graph" not in kwargs:
+            output = super().solve(*args, **kwargs)
+        else:
+            if "version" in kwargs:
+                version = kwargs["version"]
+                del kwargs["version"]
+            else:
+                version = 1
+            _graph = kwargs["graph"]
+            del kwargs["graph"]
+
+            problem_node = _graph.get_node(id(self))
+            solve_node = SolveNode(
+                self._u, problem_node, version=version, name=self._u.name
+            )
+            _graph.add_node(solve_node)
+
+            # Creating and adding the edge to the graph
+            if not problem_node == None:
+                function_edge = graph.Edge(problem_node, solve_node)
+                solve_node.set_gradFuncs([function_edge])
+                _graph.add_edge(function_edge)
+                function_edge.set_next_functions(problem_node.get_gradFuncs())
+
+            output = super().solve(*args, **kwargs)
+
+        return output
 
 
 class NonlinearProblem(NonlinearProblemBase):
@@ -212,6 +347,47 @@ class NewtonSolverNonlinearProblem(NewtonSolverNonlinearProblemBase):
                         _graph.add_edge(bc_edge)
                         problem_node.append_gradFuncs(bc_edge)
                         bc_edge.set_next_functions(bc_node.get_gradFuncs())
+
+
+class LinearProblemNode(graph.AbstractNode):
+    """
+    Node for the initialization of :py:class:`dolfinx.fem.petsc.LinearProblem`.
+    """
+
+    def __init__(
+        self,
+        object: object,
+        a: ufl.form.Form,
+        L: ufl.form.Form,
+        **kwargs,
+    ):
+        """
+        Constructor for the LinearProblemNode.
+
+        In order to create the LinearProblem in the forward pass,
+        ufl form and the function of the linear problem are needed.
+
+        Args:
+            object (object): The LinearProblem object.
+            a (ufl.form.Form): The bilinear form of the linear problem.
+            L (ufl.form.Form): The linear form of the linear problem.
+            u (fem.Function): The solution of the linear problem.
+            kwargs: Additional keyword arguments to be passed to the super class.
+
+        """
+        super().__init__(object, name="LinearProblem")
+        self.a = a
+        self.L = L
+        self.kwargs = kwargs
+
+    def __call__(self):
+        """
+        The initialization of the LinearProblem object.
+
+        """
+        output = LinearProblemBase(self.a, self.L, **self.kwargs)
+        self.object = output
+        return output
 
 
 class NonlinearProblemNode(graph.AbstractNode):
