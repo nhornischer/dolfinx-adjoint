@@ -1,10 +1,10 @@
-# dolfinx-adjoint
+# DOLFINx-ADJOINT
 
 An automatic differentiation library for [DOLFINx](https://github.com/FEniCS/dolfinx) that computes gradients using the adjoint method. This package enables efficient sensitivity analysis and gradient-based optimization for finite element simulations.
 
 ## Overview
 
-`dolfinx-adjoint` provides automatic differentiation capabilities for DOLFINx by constructing a computational graph during the forward simulation. The library then uses the adjoint method to efficiently compute gradients of scalar objective functions with respect to input parameters, boundary conditions, and other quantities of interest.
+`DOLFINx-ADJOINT` provides automatic differentiation capabilities for DOLFINx by constructing a computational graph during the forward simulation. The library then uses the adjoint method to efficiently compute gradients of scalar objective functions with respect to input parameters, boundary conditions, and other quantities of interest.
 
 ### Key Features
 
@@ -21,7 +21,7 @@ The library works by:
 
 1. **Building a computational graph** during the forward simulation that tracks all operations and dependencies
 2. **Recording operations** on DOLFINx objects (Functions, Constants, boundary conditions, etc.)
-3. **Performing backpropagation** through the graph to compute gradients using the adjoint metho
+3. **Performing backpropagation** through the graph to compute gradients using the adjoint method
 
 The computational graph is represented as a directed acyclic graph (DAG) where:
 - **Nodes** represent DOLFINx objects (Functions, Constants, etc.)
