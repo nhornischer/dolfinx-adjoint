@@ -1,6 +1,7 @@
 import os
 
 import networkx as nx
+from networkx import DiGraph
 
 from .edge import Edge
 from .node import AbstractNode, Node
@@ -53,6 +54,9 @@ class Graph:
         """
         self.nodes = []
         self.edges = []
+
+        # Cached networkx graph for fast descendants/ancestors queries
+        self._nx_graph = None
 
     def add_node(self, node: Node):
         """Add a node to the graph
@@ -116,7 +120,7 @@ class Graph:
                 return edge
         return None
 
-    def print(self, detailed=False):
+    def print(self, detailed=False) -> None:
         """
         Print the graph structure
 
@@ -162,7 +166,7 @@ class Graph:
                     print(f"\t\t{next_function}")
             print("#" * terminal_width)
 
-    def __str__(self):
+    def __str__(self) -> str:
         """String representation of the graph
 
         Returns:
@@ -171,12 +175,23 @@ class Graph:
         """
         return f"Graph object with {len(self.nodes)} nodes and {len(self.edges)} edges."
 
-    def to_networkx(self):
+    def to_networkx(self) -> DiGraph:
         """Convert the graph to a networkx graph
 
         Returns:
             nx_graph (nx.DiGraph): The networkx graph representation of the graph
         """
+        if self._nx_graph is not None:
+            # Update dynamic edge colors based on marking
+            for edge in self.edges:
+                u = id(edge.successor)
+                v = id(edge.predecessor)
+                if self._nx_graph.has_edge(u, v):
+                    self._nx_graph[u][v]["color"] = (
+                        "black" if hasattr(edge, "marked") else "grey"
+                    )
+            return self._nx_graph
+
         nx_graph = nx.DiGraph()
         for node in self.nodes:
             nx_graph.add_node(id(node), name=node.name, node=node)
@@ -201,7 +216,19 @@ class Graph:
                 color=color,
                 edge=edge,
             )
+        self._nx_graph = nx_graph
         return nx_graph
+
+    def _get_networkx_graph(self) -> DiGraph:
+        """Get the networkx graph representation of the graph.
+
+        Returns:
+            DiGraph: The networkx graph representation of the graph.
+        """
+        if self._nx_graph is None:
+            return self.to_networkx()
+        else:
+            return self._nx_graph
 
     def visualise(self, filename="graph.pdf", style="planar", print_edge_labels=True):
         import matplotlib.pyplot as plt
@@ -215,7 +242,7 @@ class Graph:
 
         """
         plt.figure(figsize=(10, 8))
-        nx_graph = self.to_networkx()
+        nx_graph = self._get_networkx_graph()
         labels = nx.get_node_attributes(nx_graph, "name")
         edge_labels = nx.get_edge_attributes(nx_graph, "tag")
         edge_colors = nx.get_edge_attributes(nx_graph, "color")
@@ -297,13 +324,18 @@ class Graph:
         """
         for edge in self.edges:
             edge.marked = False
-        nx_graph = self.to_networkx()
-        paths = nx.all_simple_paths(nx_graph, start_id, end_id)
 
-        # Create backpropagation graph based on the paths
-        for path in paths:
-            for i in range(len(path) - 1):
-                edge = nx_graph[path[i]][path[i + 1]]["edge"]
+        nx_graph = self._get_networkx_graph()
+
+        descendants_of_start = nx.descendants(nx_graph, start_id)
+        descendants_of_start.add(start_id)
+        ancestors_of_end = nx.ancestors(nx_graph, end_id)
+        ancestors_of_end.add(end_id)
+
+        for edge in self.edges:
+            succ_id = id(edge.successor)
+            pred_id = id(edge.predecessor)
+            if succ_id in descendants_of_start and pred_id in ancestors_of_end:
                 edge.marked = True
 
     def reset_grads(self):

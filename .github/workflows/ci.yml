@@ -1,0 +1,28 @@
+name: Python CI
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: ghcr.io/fenics/dolfinx/dolfinx:v0.10.0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install package and test dependencies
+        run: python3 -m pip install .[test]
+
+      - name: Lint with black
+        run: black --check --diff src/ tests/
+
+      - name: Lint with isort
+        run: isort --check-only --diff --profile black src/ tests/
+
+      - name: Run tests (serial)
+        run: python3 -m pytest -vs tests/
+
+      # - name: Run tests (parallel)
+      #   run: mpirun -n 2 python3 -m pytest -vs tests/
