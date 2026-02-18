@@ -19,7 +19,7 @@ jobs:
         run: black --check --diff src/ tests/
 
       - name: Lint with isort
-        run: isort --check-only --diff src/ tests/
+        run: isort --check-only --diff --profile black src/ tests/
 
       - name: Run tests (serial)
         run: python3 -m pytest -vs tests/
