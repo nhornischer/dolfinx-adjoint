@@ -17,7 +17,7 @@ jobs:
       - name: Install Sphinx
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install sphinx sphinx-rtd-theme networkx
+          python3 -m pip install sphinx sphinx-rtd-theme sphinx-design networkx
 
       - name: Build documentation
         run: |
