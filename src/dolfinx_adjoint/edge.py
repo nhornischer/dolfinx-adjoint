@@ -1,3 +1,5 @@
+from typing import Any
+
 import petsc4py.PETSc as PETSc
 
 from .node import Node
@@ -19,7 +21,7 @@ class Edge:
         predecessor (Node): The predecessor node of the edge
         successor (Node): The successor node of the edge
         next_functions (list): The list of the gradient functions that are connected to the edge
-        ctx (object): The context variable of the edge
+        ctx (Any): The context variable of the edge
         input_value (float or PETSc.Vec): The input value of the edge
 
     Methods:
@@ -35,7 +37,7 @@ class Edge:
         Args:
             predecessor (Node): The predecessor node of the edge
             successor (Node): The successor node of the edge
-            ctx (object, optional): The context variable of the edge
+            ctx (Any, optional): The context variable of the edge
             input_value (float or PETSc.Vec, optional): The input value of the edge
 
         """
