@@ -24,9 +24,7 @@ jobs:
           sphinx-apidoc -o docs/api src/dolfinx_adjoint --force --module-first --separate
           sphinx-build -W --keep-going -b html docs docs/_build/html
 
-      # Upload Pages artifact for non-PR runs (publish workflow calls).
       - name: Upload Pages artifact
-        if: ${{ github.event_name != 'pull_request' }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./docs/_build/html
