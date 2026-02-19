@@ -1,0 +1,32 @@
+name: Docs CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_call:
+
+jobs:
+  docs:
+    name: Build docs with Sphinx
+    runs-on: ubuntu-latest
+    container: ghcr.io/fenics/dolfinx/dolfinx:v0.10.0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Sphinx
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install sphinx sphinx-rtd-theme networkx
+
+      - name: Build documentation
+        run: |
+          sphinx-apidoc -o docs/api src/dolfinx_adjoint --force --module-first
+          sphinx-build -W --keep-going -b html docs docs/_build/html
+
+      # Upload Pages artifact for non-PR runs (publish workflow calls).
+      - name: Upload Pages artifact
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./docs/_build/html
