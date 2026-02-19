@@ -61,12 +61,15 @@ class Edge:
 
     def calculate_adjoint(self):
         """
-        This method calculates the default adjoint equation for the edge, which corresponds to the derivative
-            ∂successor/∂predecessor = 1.0
+        This method calculates the default adjoint equation for the edge, which
+        corresponds to the derivative:
+
+            d(successor)/d(predecessor) = 1.0
 
         This operator is stored in the edge and applied to the input. The adjoint value of the predeccessor
         node is generally calculated as follows:
-            adjoint(predecessor) += adjoint(successor) * ∂successor/∂predecessor
+
+            adjoint(predecessor) += adjoint(successor) * d(successor)/d(predecessor)
 
         Returns:
             float or PETSc.Vec: The adjoint value of the predecessor node
