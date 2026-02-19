@@ -48,10 +48,6 @@ The `demos/` directory contains comprehensive Jupyter notebook examples demonstr
 - **[linear_elasticity.ipynb](demos/linear_elasticity.ipynb)** - Linear elasticity problem with parameter sensitivities
 - **[stokes.ipynb](demos/stokes.ipynb)** - Stokes flow with obstacle, computing gradients w.r.t. viscosity and boundary conditions
 
-## License
-
-This project is licensed under the terms specified in [LICENSE.txt](LICENSE.txt).
-
 ## Acknowledgments
 
 This library builds upon the excellent work of the [FEniCS Project](https://fenicsproject.org/) and uses [DOLFINx](https://github.com/FEniCS/dolfinx) as its foundation.
