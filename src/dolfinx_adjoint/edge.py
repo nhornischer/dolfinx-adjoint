@@ -24,10 +24,6 @@ class Edge:
         ctx (Any): The context variable of the edge
         input_value (float or PETSc.Vec): The input value of the edge
 
-    Methods:
-        set_next_functions: Sets the next functions in the path of the edge
-        calculate_adjoint: Calculates the default adjoint equation for the edge
-
     """
 
     def __init__(self, predecessor: Node, successor: Node, ctx=None, input_value=None):

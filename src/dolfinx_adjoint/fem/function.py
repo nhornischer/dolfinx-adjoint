@@ -13,10 +13,6 @@ class Function(fem.Function):
     and adds the corresponding node to the graph. The assign method assign values to the function and adds the
     corresponding operation to the graph.
 
-    Methods:
-        copy: Creates a new function and adds the corresponding node to the graph.
-        assign: Assign values to the function and adds the corresponding operation to the graph.
-
     """
 
     def __init__(self, *args, **kwargs):

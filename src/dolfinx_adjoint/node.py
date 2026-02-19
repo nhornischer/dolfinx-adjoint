@@ -23,13 +23,6 @@ class AbstractNode:
         gradFuncs (list): A list of the gradient functions that are connected to the node
         _name (str): The name of the node
 
-    Methods:
-        name: Returns the name of the node
-        set_object: Sets the object of the node
-        set_gradFuncs: Sets the gradient functions of the node
-        append_gradFuncs: Appends a gradient function to the list of gradient functions
-        get_gradFuncs: Returns the gradient functions of the node
-
     """
 
     def __init__(self, object: Any, version=0, **kwargs):
@@ -149,13 +142,6 @@ class Node(AbstractNode):
     Attributes:
         data (Any): The object that the node represents
         grad (float or PETSc.Vec): The gradient of the object
-
-    Methods:
-        get_object: Returns the object of the node
-        set_grad: Sets the gradient of the node
-        get_grad: Returns the gradient of the node
-        reset_grad: Resets the gradient of the node
-        accumulate_grad: Accumulates the gradient of the node
 
     """
 
