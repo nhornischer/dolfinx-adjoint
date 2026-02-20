@@ -1,33 +1,16 @@
 # DOLFINx-ADJOINT
 
-An automatic differentiation library for [DOLFINx](https://github.com/FEniCS/dolfinx) that computes gradients using the adjoint method. This package enables efficient sensitivity analysis and gradient-based optimization for finite element simulations.
+[![CI](https://github.com/nhornischer/dolfinx-adjoint/actions/workflows/ci.yml/badge.svg)](https://github.com/nhornischer/dolfinx-adjoint/actions/workflows/ci.yml)
+[![Docs](https://github.com/nhornischer/dolfinx-adjoint/actions/workflows/docs-publish.yml/badge.svg)](https://nhornischer.github.io/dolfinx-adjoint/)
+![Python >= 3.12](https://img.shields.io/badge/python-%3E%3D3.12-blue)
+![DOLFINx >= 0.10.0](https://img.shields.io/badge/DOLFINx-%3E%3D0.10.0-orange)
 
-## Overview
+Automatic differentiation for [DOLFINx](https://github.com/FEniCS/dolfinx) using the adjoint method.
+Efficient sensitivity analysis and gradient-based optimization for finite element simulations.
 
-`DOLFINx-ADJOINT` provides automatic differentiation capabilities for DOLFINx by constructing a computational graph during the forward simulation. The library then uses the adjoint method to efficiently compute gradients of scalar objective functions with respect to input parameters, boundary conditions, and other quantities of interest.
+## Documentation
 
-### Key Features
-
-- **Automatic differentiation** through computational graph construction
-- **Adjoint method** for efficient gradient computation
-- **Seamless integration** with DOLFINx workflow
-- **Support for complex PDEs** including nonlinear problems
-- **Graph visualization** for debugging and understanding dependencies
-- **Minimal code changes** required to existing DOLFINx code
-
-### How It Works
-
-The library works by:
-
-1. **Building a computational graph** during the forward simulation that tracks all operations and dependencies
-2. **Recording operations** on DOLFINx objects (Functions, Constants, boundary conditions, etc.)
-3. **Performing backpropagation** through the graph to compute gradients using the adjoint method
-
-The computational graph is represented as a directed acyclic graph (DAG) where:
-- **Nodes** represent DOLFINx objects (Functions, Constants, etc.)
-- **Edges** represent operations and their derivatives
-
-This approach enables efficient computation of gradients even for complex PDE systems with many parameters.
+Full documentation is available at [nhornischer.github.io/dolfinx-adjoint](https://nhornischer.github.io/dolfinx-adjoint/).
 
 ## Installation
 
@@ -38,6 +21,28 @@ pip install -e .
 ```
 
 Requires Python >= 3.12 and [DOLFINx](https://github.com/FEniCS/dolfinx) >= 0.10.0. For demos and tests, use `pip install -e ".[all]"`.
+
+## Quick Example
+
+Compute dJ/df for a Poisson problem:
+
+```python
+from dolfinx_adjoint import Graph, fem
+
+graph_ = Graph()
+
+# Set up your DOLFINx problem, passing graph= to track operations
+f  = fem.Function(W, name="f", graph=graph_)
+uh = fem.Function(V, name="u", graph=graph_)
+
+problem = fem.petsc.LinearProblem(a, L, u=uh, bcs=bcs, graph=graph_)
+problem.solve(graph=graph_)
+
+J = fem.assemble_scalar(fem.form(J_form, graph=graph_), graph=graph_)
+
+# Compute the gradient
+dJdf = graph_.backprop(id(J), id(f))
+```
 
 ## Demos
 
