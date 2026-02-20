@@ -1,3 +1,5 @@
+from typing import Any
+
 from dolfinx import fem
 
 import dolfinx_adjoint.graph as graph
@@ -61,17 +63,17 @@ class AssembleScalarNode(graph.Node):
     the form needs to be saved in the node.
 
     Attributes:
-        object (object): The object that is being represented by the node
+        object (Any): The object that is being represented by the node
         M (dolfinx.fem.Form): The form that is being assembled
 
     """
 
-    def __init__(self, object: object, M: fem.Form):
+    def __init__(self, object: Any, M: fem.Form):
         """
         Constructor for the AssembleScalarNode
 
         Args:
-            object (object): The object that is being represented by the node
+            object (Any): The object that is being represented by the node
             M (dolfinx.fem.Form): The form that is being assembled
 
         """

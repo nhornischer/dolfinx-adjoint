@@ -17,20 +17,6 @@ class Graph:
         nodes (list): List of nodes in the graph
         edes (list): List of edges in the graph
 
-    Methods:
-        add_node: Add a node to the graph
-        add_edge: Add an edge to the graph
-        get_node: Get a node from the graph
-        get_edge: Get an edge from the graph
-        print: Print the graph
-        to_networkx: Convert the graph to a networkx graph
-        visualise: Visualise the graph
-        backprop: Perform backpropagation in the graph
-        get_backpropagation_path: Get the backpropagation path
-        reset_grads: Reset the gradients in the graph
-        recalculate: Recalculate the graph
-        clear: Clear the graph
-
     Example:
         The graph object can be initialised and the default nodes and edges can be added as follows:
         >>> graph = Graph()

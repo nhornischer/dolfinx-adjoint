@@ -1,5 +1,6 @@
 import copy
 import ctypes
+from typing import Any
 
 import petsc4py.PETSc as PETSc
 
@@ -18,25 +19,18 @@ class AbstractNode:
         id (int): The python id of the object
         version (int, optional): The version of the object, indicates if an object is an updated version of an
             already existing object. Defaults to 0.
-        object (object): The object that the node represents
+        object (Any): The object that the node represents
         gradFuncs (list): A list of the gradient functions that are connected to the node
         _name (str): The name of the node
 
-    Methods:
-        name: Returns the name of the node
-        set_object: Sets the object of the node
-        set_gradFuncs: Sets the gradient functions of the node
-        append_gradFuncs: Appends a gradient function to the list of gradient functions
-        get_gradFuncs: Returns the gradient functions of the node
-
     """
 
-    def __init__(self, object: object, version=0, **kwargs):
+    def __init__(self, object: Any, version=0, **kwargs):
         """
         Constructor for the AbstractNode class.
 
         Args:
-            object (object): The object that the node represents
+            object (Any): The object that the node represents
             version (int, optional): The version of the object, indicates if an object is an updated version of an
                 already existing object. Defaults to 0.
             **kwargs: Additional keyword arguments
@@ -66,12 +60,12 @@ class AbstractNode:
         else:
             return str(self._name)
 
-    def set_object(self, object: object):
+    def set_object(self, object: Any):
         """
         Sets the object of the node.
 
         Args:
-            object (object): The object that the node represents
+            object (Any): The object that the node represents
         """
         self.object = object
 
@@ -84,12 +78,12 @@ class AbstractNode:
         """
         self.gradFuncs = list
 
-    def append_gradFuncs(self, Funcs: list or object):
+    def append_gradFuncs(self, Funcs: list | Any):
         """
         Appends a gradient function to the list of gradient functions.
 
         Args:
-            _list (list or object): A list of the gradient functions that are connected to the node.
+            _list (list or Any): A list of the gradient functions that are connected to the node.
                 If a single function is given, it is appended to the list.
         """
 
@@ -146,19 +140,12 @@ class Node(AbstractNode):
     The Node class inherits from the AbstractNode class and provides the functionality to represent the object and operations in the graph.
 
     Attributes:
-        data (object): The object that the node represents
+        data (Any): The object that the node represents
         grad (float or PETSc.Vec): The gradient of the object
-
-    Methods:
-        get_object: Returns the object of the node
-        set_grad: Sets the gradient of the node
-        get_grad: Returns the gradient of the node
-        reset_grad: Resets the gradient of the node
-        accumulate_grad: Accumulates the gradient of the node
 
     """
 
-    def __init__(self, object: object, **kwargs):
+    def __init__(self, object: Any, **kwargs):
         super().__init__(object, **kwargs)
         self.data = copy.copy(object)
         self.grad = None

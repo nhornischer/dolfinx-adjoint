@@ -1,3 +1,5 @@
+from typing import Any
+
 import ufl
 from dolfinx import fem, la
 from dolfinx.fem.petsc import LinearProblem as LinearProblemBase
@@ -356,7 +358,7 @@ class LinearProblemNode(graph.AbstractNode):
 
     def __init__(
         self,
-        object: object,
+        object: Any,
         a: ufl.form.Form,
         L: ufl.form.Form,
         **kwargs,
@@ -368,7 +370,7 @@ class LinearProblemNode(graph.AbstractNode):
         ufl form and the function of the linear problem are needed.
 
         Args:
-            object (object): The LinearProblem object.
+            object (Any): The LinearProblem object.
             a (ufl.form.Form): The bilinear form of the linear problem.
             L (ufl.form.Form): The linear form of the linear problem.
             u (fem.Function): The solution of the linear problem.
@@ -395,7 +397,7 @@ class NonlinearProblemNode(graph.AbstractNode):
     Node for the initialization of :py:class:`dolfinx.fem.petsc.NonlinearProblem`.
     """
 
-    def __init__(self, object: object, F: ufl.form.Form, u: fem.Function, **kwargs):
+    def __init__(self, object: Any, F: ufl.form.Form, u: fem.Function, **kwargs):
         """
         Constructor for the NonlinearProblemNode.
 
@@ -403,7 +405,7 @@ class NonlinearProblemNode(graph.AbstractNode):
         ufl form and the function of the nonlinear problem are needed.
 
         Args:
-            object (object): The NonlinearProblem object.
+            object (Any): The NonlinearProblem object.
             F (ufl.form.Form): The form of the nonlinear problem.
             u (fem.Function): The solution of the nonlinear problem.
             kwargs: Additional keyword arguments to be passed to the super class.
@@ -430,7 +432,7 @@ class SolveNode(graph.Node):
 
     """
 
-    def __init__(self, object: object, problemNode: graph.Node, name="solve", **kwargs):
+    def __init__(self, object: Any, problemNode: graph.Node, name="solve", **kwargs):
         """
         Constructor for the SolveNode
 
@@ -438,7 +440,7 @@ class SolveNode(graph.Node):
         the solverNode storing the NewtonSolver and the non-linear problem are needed.
 
         Args:
-            object (object): The object to be wrapped in the node
+            object (Any): The object to be wrapped in the node
             solverNode (graph.Node): The node storing the NewtonSolver
             name (str, optional): The name of the node
             kwargs (optional): Additional keyword arguments to be passed to the :py:class:`dolfinx_adjoint.graph.AbstractNode` constructor
@@ -463,7 +465,7 @@ class NewtonSolverNonlinearProblemNode(graph.AbstractNode):
     Node for the initialization of :py:class:`dolfinx.fem.petsc.NewtonSolverNonlinearProblem`.
     """
 
-    def __init__(self, object: object, F: ufl.form.Form, u: fem.Function, **kwargs):
+    def __init__(self, object: Any, F: ufl.form.Form, u: fem.Function, **kwargs):
         """
         Constructor for the NewtonSolverNonlinearProblemNode.
 
@@ -471,7 +473,7 @@ class NewtonSolverNonlinearProblemNode(graph.AbstractNode):
         ufl form and the function of the nonlinear problem are needed.
 
         Args:
-            object (object): The NewtonSolverNonlinearProblem object.
+            object (Any): The NewtonSolverNonlinearProblem object.
             F (ufl.form.Form): The form of the nonlinear problem.
             u (fem.Function): The solution of the nonlinear problem.
             kwargs: Additional keyword arguments to be passed to the super class.

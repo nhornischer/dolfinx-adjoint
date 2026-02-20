@@ -1,3 +1,5 @@
+from typing import Any
+
 from dolfinx.fem.petsc import NewtonSolverNonlinearProblem
 from dolfinx.nls.petsc import NewtonSolver as NewtonSolverBase
 from mpi4py import MPI
@@ -100,7 +102,7 @@ class NewtonSolverNode(graph.AbstractNode):
 
     def __init__(
         self,
-        object: object,
+        object: Any,
         comm: MPI.Intracomm,
         problem: NewtonSolverNonlinearProblem,
         name="NewtonSolver",
@@ -113,7 +115,7 @@ class NewtonSolverNode(graph.AbstractNode):
         the problem and the MPI communicator are needed.
 
         Args:
-            object (object): The object to be wrapped in the node
+            object (Any): The object to be wrapped in the node
             comm (MPI.Intracomm): The MPI communicator
             problem (dolfinx.fem.petsc.NewtonSolverNonlinearProblem): The non-linear problem to be solved
             name (str, optional): The name of the node
@@ -138,7 +140,7 @@ class SolveNode(graph.Node):
 
     """
 
-    def __init__(self, object: object, solverNode: graph.Node, name="solve", **kwargs):
+    def __init__(self, object: Any, solverNode: graph.Node, name="solve", **kwargs):
         """
         Constructor for the SolveNode
 
@@ -146,7 +148,7 @@ class SolveNode(graph.Node):
         the solverNode storing the NewtonSolver and the non-linear problem are needed.
 
         Args:
-            object (object): The object to be wrapped in the node
+            object (Any): The object to be wrapped in the node
             solverNode (graph.Node): The node storing the NewtonSolver
             name (str, optional): The name of the node
             kwargs (optional): Additional keyword arguments to be passed to the :py:class:`dolfinx_adjoint.graph.AbstractNode` constructor

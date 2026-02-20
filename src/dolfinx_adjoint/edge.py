@@ -1,3 +1,5 @@
+from typing import Any
+
 import petsc4py.PETSc as PETSc
 
 from .node import Node
@@ -19,12 +21,8 @@ class Edge:
         predecessor (Node): The predecessor node of the edge
         successor (Node): The successor node of the edge
         next_functions (list): The list of the gradient functions that are connected to the edge
-        ctx (object): The context variable of the edge
+        ctx (Any): The context variable of the edge
         input_value (float or PETSc.Vec): The input value of the edge
-
-    Methods:
-        set_next_functions: Sets the next functions in the path of the edge
-        calculate_adjoint: Calculates the default adjoint equation for the edge
 
     """
 
@@ -35,7 +33,7 @@ class Edge:
         Args:
             predecessor (Node): The predecessor node of the edge
             successor (Node): The successor node of the edge
-            ctx (object, optional): The context variable of the edge
+            ctx (Any, optional): The context variable of the edge
             input_value (float or PETSc.Vec, optional): The input value of the edge
 
         """
@@ -59,12 +57,15 @@ class Edge:
 
     def calculate_adjoint(self):
         """
-        This method calculates the default adjoint equation for the edge, which corresponds to the derivative
-            ∂successor/∂predecessor = 1.0
+        This method calculates the default adjoint equation for the edge, which
+        corresponds to the derivative:
+
+            d(successor)/d(predecessor) = 1.0
 
         This operator is stored in the edge and applied to the input. The adjoint value of the predeccessor
         node is generally calculated as follows:
-            adjoint(predecessor) += adjoint(successor) * ∂successor/∂predecessor
+
+            adjoint(predecessor) += adjoint(successor) * d(successor)/d(predecessor)
 
         Returns:
             float or PETSc.Vec: The adjoint value of the predecessor node

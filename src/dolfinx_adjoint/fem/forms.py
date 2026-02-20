@@ -1,3 +1,5 @@
+from typing import Any
+
 import ufl
 from dolfinx import fem
 
@@ -73,17 +75,17 @@ class FormNode(graph.AbstractNode):
     the ufl form needs to be saved in the node.
 
     Attributes:
-        object (object): The object that is being compiled.
+        object (Any): The object that is being compiled.
         ufl_form (ufl.form.Form): The ufl form that is being compiled.
 
     """
 
-    def __init__(self, object: object, ufl_form: ufl.form.Form):
+    def __init__(self, object: Any, ufl_form: ufl.form.Form):
         """
         Constructor for the FormNode.
 
         Args:
-            object (object): The object that is being compiled.
+            object (Any): The object that is being compiled.
             ufl_form (ufl.form.Form): The ufl form that is being compiled.
 
         """
